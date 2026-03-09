@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>機械臂拓樸監控中心</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e2e; color: #cdd6f4; text-align: center; padding: 20px; }
+        .dashboard { max-width: 600px; margin: 0 auto; background: #313244; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .status-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; }
+        .status-READY { background: #a6e3a1; color: #111; }
+        .status-WORKING { background: #89b4fa; color: #111; }
+        .status-ERROR { background: #f38ba8; color: #111; }
+        .status-OFFLINE { background: #6c7086; color: #111; }
+        
+        /* 畫出拓樸的樣式 */
+        .topology-container { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 20px; }
+        .node { background: #f9e2af; color: #111; padding: 15px; border-radius: 10px; font-weight: bold; width: 150px; border: 3px solid #f38ba8; }
+        .arrow { color: #a6adc8; font-size: 24px; }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <h2>🦾 模組化機械臂監控</h2>
+        <div id="statusBadge" class="status-badge status-OFFLINE">等待連線中...</div>
+        <p>系統總節點數: <span id="totalCount">0</span></p>
+        <p style="color: #f38ba8;" id="errorMsg"></p>
+
+        <h3>📍 即時拓樸結構</h3>
+        <div class="topology-container" id="topologyView">
+            </div>
+    </div>
+
+    <script>
+        // 自動判斷要連線到本機還是 Render 雲端
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => console.log('✅ 成功連線到伺服器！');
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("📥 收到最新狀態:", data);
+
+            // 1. 更新狀態標籤
+            const badge = document.getElementById('statusBadge');
+            badge.className = `status-badge status-${data.status}`;
+            badge.innerText = data.status;
+
+            // 2. 更新錯誤訊息與數量
+            document.getElementById('errorMsg').innerText = data.msg || "";
+            document.getElementById('totalCount').innerText = data.total || 0;
+
+            // 3. 渲染拓樸結構圖！
+            const view = document.getElementById('topologyView');
+            view.innerHTML = ''; // 清空舊的畫面
+
+            if (data.topology && data.topology.length > 0) {
+                // 加一個虛擬的「主控板」作為源頭
+                view.innerHTML += `<div class="node" style="background:#89b4fa;">🧠 ESP32 主控板<br>(Face 0)</div>`;
+                
+                data.topology.forEach((node) => {
+                    view.innerHTML += `<div class="arrow">⬇️ 接在 Face ${node.face}</div>`;
+                    view.innerHTML += `<div class="node">C3 關節 (ID: ${node.id})</div>`;
+                });
+            } else {
+                view.innerHTML = '<p style="color: #a6adc8;">目前沒有偵測到模組</p>';
+            }
+        };
+
+        ws.onclose = () => {
+            document.getElementById('statusBadge').className = 'status-badge status-OFFLINE';
+            document.getElementById('statusBadge').innerText = '與伺服器斷線';
+        };
+    </script>
+</body>
+</html>
