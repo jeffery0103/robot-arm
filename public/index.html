@@ -68,7 +68,7 @@
             const group = new THREE.Group(); 
 
             // 🌟 轉軸更新為「銀灰色金屬亮面」！(0xa6adc8，加上 shininess 反光)
-            const pivotGeo = new THREE.CylinderGeometry(13, 13, PIVOT_HEIGHT, 32);
+            const pivotGeo = new THREE.CylinderGeometry(11, 11, PIVOT_HEIGHT, 32);
             const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
             const pivot = new THREE.Mesh(pivotGeo, pivotMat);
             pivot.position.y = PIVOT_HEIGHT / 2; 
