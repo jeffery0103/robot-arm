@@ -37,7 +37,7 @@
         scene.add(gridHelper);
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(120, 100, 180); // 視角拉高一點，方便看往上長的手臂
+        camera.position.set(120, 100, 180); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -57,27 +57,26 @@
         let robotBaseGroup = new THREE.Group();
         scene.add(robotBaseGroup);
 
-        // 2. 幾何尺寸設定 (完美對應「轉軸朝下」物理模型)
+        // 2. 幾何尺寸設定
         const CUBE_SIZE = 30; 
         const PIVOT_HEIGHT = 10;
-        const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; // 40
+        const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; 
 
         function createModule(id, colorHex) {
             const group = new THREE.Group(); 
-            // ⚠️ 物理原點 (0,0,0) 設定在黑色轉軸的最底端 (準備插人的地方)
 
-            // 轉軸 (從 0 長到 10)
+            // 轉軸
             const pivotGeo = new THREE.CylinderGeometry(8, 8, PIVOT_HEIGHT, 32);
             const pivotMat = new THREE.MeshPhongMaterial({ color: 0x313244 });
             const pivot = new THREE.Mesh(pivotGeo, pivotMat);
-            pivot.position.y = PIVOT_HEIGHT / 2; // 中心點在 5
+            pivot.position.y = PIVOT_HEIGHT / 2; 
             group.add(pivot);
 
-            // 方塊本體 (疊在轉軸上面，從 10 到 40)
+            // 方塊本體
             const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
             const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
-            body.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); // 中心點在 25
+            body.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
             group.add(body);
 
             // 正面 ID 指示燈
@@ -91,7 +90,7 @@
             return group;
         }
 
-        // 3. 拓樸樹狀圖解析與組裝 (修正錯位 Bug)
+        // 3. 拓樸樹狀圖解析與組裝
         function rebuildTopology(topologyArray) {
             scene.remove(robotBaseGroup);
             robotBaseGroup = new THREE.Group();
@@ -101,46 +100,43 @@
 
             const modules = {}; 
             
-            // 建立虛擬底座 (扁平圓盤)
+            // 底座
             const baseGeo = new THREE.CylinderGeometry(30, 30, 10, 32);
             const baseMat = new THREE.MeshPhongMaterial({ color: 0xf5c2e7 });
             const baseModule = new THREE.Mesh(baseGeo, baseMat);
-            baseModule.position.y = -5; // 藏在地板下一點點，表面剛好切齊 Y=0
+            baseModule.position.y = -5; 
             robotBaseGroup.add(baseModule);
             
-            // 先把所有積木都生出來
             topologyArray.forEach((node) => {
                 modules[node.id] = createModule(node.id, 0xf9e2af);
             });
 
-            // ID 1 永遠固定插在底座的正中央
             if (modules[1]) {
                 modules[1].position.set(0, 0, 0); 
                 robotBaseGroup.add(modules[1]);
             }
 
-            // 開始將小弟插在老大的身上 (修正陣列對位邏輯)
             for (let i = 0; i < topologyArray.length; i++) {
                 const parentNode = topologyArray[i];
                 const parentId = parentNode.id;
-                const childId = parentId + 1; // 假設 ID 是連續的
-                const parentFace = parentNode.face; // 老大提供出來的洞！
+                const childId = parentId + 1; 
+                const parentFace = parentNode.face; 
 
                 if (modules[childId] && modules[parentId]) {
                     
                     if (parentFace === 0) {
-                        // 【底面 Face 0 (朝上)】：疊加在老大的頭頂
+                        // 【底面 Face 0】：維持朝上
                         modules[childId].position.set(0, TOTAL_HEIGHT, 0);
-                        modules[childId].rotation.z = 0;
+                        modules[childId].rotation.set(0, 0, 0);
                     } 
                     else if (parentFace === 1) {
-                        // 【側面 Face 1 (朝右)】：插在老大的右側
+                        // 【側面 Face 1】：插在側邊，且保證 Face 1 朝上不鑽地！
                         modules[childId].position.set(CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
-                        // 旋轉 -90 度，讓轉軸橫向對準洞口
-                        modules[childId].rotation.z = -Math.PI / 2; 
+                        
+                        // 🌟 物理魔法：先沿著 Y 軸轉 180 度翻面，再沿著 Z 軸轉 -90 度插進去！
+                        modules[childId].rotation.set(0, Math.PI, -Math.PI / 2); 
                     }
 
-                    // 綁定父子關係
                     modules[parentId].add(modules[childId]);
                 }
             }
