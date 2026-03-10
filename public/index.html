@@ -130,11 +130,18 @@
                         modules[childId].rotation.set(0, 0, 0);
                     } 
                     else if (parentFace === 1) {
-                        // 【側面 Face 1】：插在側邊，且保證 Face 1 朝上不鑽地！
+                        // 【側面 Face 1】：插在側邊
                         modules[childId].position.set(CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
                         
-                        // 🌟 物理魔法：先沿著 Y 軸轉 180 度翻面，再沿著 Z 軸轉 -90 度插進去！
-                        modules[childId].rotation.set(0, Math.PI, -Math.PI / 2); 
+                        // 🌟 終極除錯魔法：使用「相對連續旋轉」避免尤拉角錯亂！
+                        modules[childId].rotation.set(0, 0, 0); // 先把角度洗白歸零
+                        
+                        // 動作 1：讓整顆積木向右倒 90 度 (轉軸成功向外插！)
+                        modules[childId].rotateZ(-Math.PI / 2); 
+                        
+                        // 動作 2：此時 Face 1 是朝下的，我們讓積木沿著自己現在的轉軸「翻滾 180 度」！
+                        // 這樣 Face 1 就會完美朝上了！
+                        modules[childId].rotateY(Math.PI); 
                     }
 
                     modules[parentId].add(modules[childId]);
