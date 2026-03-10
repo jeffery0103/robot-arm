@@ -58,7 +58,7 @@
         scene.add(robotBaseGroup);
 
         const CUBE_SIZE = 30; 
-        const PIVOT_HEIGHT = 10;
+        const PIVOT_HEIGHT = 5;
         const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; 
         
         let modules = {}; // 將積木字典拉到全域，方便我們隨時更新角度！
@@ -68,7 +68,7 @@
             const group = new THREE.Group(); 
 
             // 🌟 轉軸更新為「銀灰色金屬亮面」！(0xa6adc8，加上 shininess 反光)
-            const pivotGeo = new THREE.CylinderGeometry(8, 8, PIVOT_HEIGHT, 32);
+            const pivotGeo = new THREE.CylinderGeometry(13, 13, PIVOT_HEIGHT, 32);
             const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
             const pivot = new THREE.Mesh(pivotGeo, pivotMat);
             pivot.position.y = PIVOT_HEIGHT / 2; 
