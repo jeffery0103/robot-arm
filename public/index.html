@@ -1,67 +1,105 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>機械臂拓樸監控中心</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e2e; color: #cdd6f4; text-align: center; padding: 20px; }
-        .dashboard { max-width: 600px; margin: 0 auto; background: #313244; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .status-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; }
-        .status-READY { background: #a6e3a1; color: #111; }
-        .status-WORKING { background: #89b4fa; color: #111; }
-        .status-ERROR { background: #f38ba8; color: #111; }
-        .status-OFFLINE { background: #6c7086; color: #111; }
-        
-        /* 畫出拓樸的樣式 */
-        .topology-container { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 20px; }
-        .node { background: #f9e2af; color: #111; padding: 15px; border-radius: 10px; font-weight: bold; width: 150px; border: 3px solid #f38ba8; }
-        .arrow { color: #a6adc8; font-size: 24px; }
-    </style>
-</head>
-<body>
+ㄒ;
+            robotBaseGroup = new THREE.Group();
+            scene.add(robotBaseGroup);
 
-    <div class="dashboard">
-        <h2>🦾 模組化機械臂監控</h2>
-        <div id="statusBadge" class="status-badge status-OFFLINE">等待連線中...</div>
-        <p>系統總節點數: <span id="totalCount">0</span></p>
-        <p style="color: #f38ba8;" id="errorMsg"></p>
+            if (!topologyArray || topologyArray.length === 0) return;
 
-        <h3>📍 即時拓樸結構</h3>
-        <div class="topology-container" id="topologyView">
-            </div>
-    </div>
+            // 為了方便組裝，我們把所有生成的模組用字典存起來
+            const modules = {}; 
+            
+            // 建立虛擬的主控底座 (粉紅色)
+            const baseModule = createModule(0, 0xf5c2e7);
+            baseModule.position.y = 50; // 把整隻手臂稍微抬高
+            robotBaseGroup.add(baseModule);
+            modules[0] = baseModule;
 
-    <script>
-        // 自動判斷要連線到本機還是 Render 雲端
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}`;
-        const ws = new WebSocket(wsUrl);
+            // 依照陣列順序依序組裝積木
+            topologyArray.forEach((node) => {
+                const childId = node.id;
+                const parentFace = node.face; // 這是我要接在父節點的哪個面上！
+                
+                // 這裡我們簡化邏輯：假設 ID 是按順序串的，父節點就是 childId - 1
+                // (如果你的實際拓樸更複雜，可以修改這裡的父節點尋找邏輯)
+                const parentId = childId - 1; 
+                const parentModule = modules[parentId];
 
-        ws.onopen = () => console.log('✅ 成功連線到伺服器！');
+                if (parentModule) {
+                    const childModule = createModule(childId, 0xf9e2af); // 小弟是黃色
+                    modules[childId] = childModule;
+                    
+                    // 📐 完美的正向運動學對位！
+                    if (parentFace === 0) {
+                        // 【底面 Face 0】：直列往下延伸
+                        // 下移距離 = 轉軸高度 + 方塊高度 + 一點點間隙
+                        childModule.position.y = -(PIVOT_HEIGHT + CUBE_SIZE + 2);
+                    } 
+                    else if (parentFace === 1) {
+                        // 【側面 Face 1】：90度分岔轉彎
+                        // 往右移出半個方塊 + 轉軸高度
+                        childModule.position.x = (CUBE_SIZE / 2) + PIVOT_HEIGHT + 2;
+                        // 往下對齊側面的正中心
+                        childModule.position.y = -(CUBE_SIZE / 2);
+                        // ⚠️ 物理魔法：必須繞 Z 軸旋轉 -90 度，讓轉軸插進側面！
+                        childModule.rotation.z = -Math.PI / 2; 
+                    }
+
+                    // 將子模組「綁定」到父模組上！這樣父轉，子就會跟著甩！
+                    parentModule.add(childModule);
+                }
+            });
+        }
+
+        // ----------------------------------------------------
+        // 4. WebSocket 雲端連線邏輯
+        // ----------------------------------------------------
+        // 因為你的 Render 網址是 https 開頭，所以這裡要用 wss:// 加密 WebSocket
+        const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
+
+        ws.onopen = () => console.log('✅ 成功連線到 Render 伺服器！');
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            console.log("📥 收到最新狀態:", data);
-
-            // 1. 更新狀態標籤
+            
+            // 更新 UI 狀態
             const badge = document.getElementById('statusBadge');
             badge.className = `status-badge status-${data.status}`;
             badge.innerText = data.status;
-
-            // 2. 更新錯誤訊息與數量
             document.getElementById('errorMsg').innerText = data.msg || "";
             document.getElementById('totalCount').innerText = data.total || 0;
 
-            // 3. 渲染拓樸結構圖！
-            const view = document.getElementById('topologyView');
-            view.innerHTML = ''; // 清空舊的畫面
+            // 如果狀態是 READY 且有拓樸陣列，就觸發 3D 引擎重新組裝！
+            if (data.status === "READY" || data.status === "WORKING") {
+                rebuildTopology(data.topology);
+            } else {
+                // 如果發生錯誤或離線，就把畫面清空
+                rebuildTopology([]); 
+            }
+        };
 
-            if (data.topology && data.topology.length > 0) {
-                // 加一個虛擬的「主控板」作為源頭
-                view.innerHTML += `<div class="node" style="background:#89b4fa;">🧠 ESP32 主控板<br>(Face 0)</div>`;
-                
-                data.topology.forEach((node) => {
+        ws.onclose = () => {
+            document.getElementById('statusBadge').className = 'status-badge status-OFFLINE';
+            document.getElementById('statusBadge').innerText = '與伺服器斷線';
+        };
+
+        // ----------------------------------------------------
+        // 5. 渲染迴圈 (讓畫面維持 60 FPS 刷新)
+        // ----------------------------------------------------
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); 
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 視窗大小改變時自動適應
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>ode) => {
                     view.innerHTML += `<div class="arrow">⬇️ 接在 Face ${node.face}</div>`;
                     view.innerHTML += `<div class="node">C3 關節 (ID: ${node.id})</div>`;
                 });
@@ -74,6 +112,217 @@
             document.getElementById('statusBadge').className = 'status-badge status-OFFLINE';
             document.getElementById('statusBadge').innerText = '與伺服器斷線';
         };
+    </script>
+</body>
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 模組化機械臂數位孿生</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1e1e2e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #ui-layer { position: absolute; top: 20px; left: 20px; color: #cdd6f4; pointer-events: none; z-index: 10; background: rgba(49, 50, 68, 0.8); padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .status-badge { display: inline-block; padding: 6px 12px; border-radius: 15px; font-weight: bold; margin-bottom: 10px; }
+        .status-READY { background: #a6e3a1; color: #111; }
+        .status-WORKING { background: #89b4fa; color: #111; }
+        .status-ERROR { background: #f38ba8; color: #111; }
+        .status-OFFLINE { background: #6c7086; color: #111; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h2 style="margin-top: 0;">🦾 3D 數位孿生監控</h2>
+        <div id="statusBadge" class="status-badge status-OFFLINE">等待連線...</div>
+        <div>系統總節點數: <span id="totalCount">0</span></div>
+        <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
+        <div class="hint">滑鼠左鍵：旋轉視角<br>滑鼠右鍵：平移<br>滾輪：縮放</div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // ----------------------------------------------------
+        // 1. 基礎 3D 場景建構
+        // ----------------------------------------------------
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        // 加入一點科技感的網格地板
+        const gridHelper = new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244);
+        scene.add(gridHelper);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(100, 80, 150);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; 
+        controls.target.set(0, 30, 0);
+
+        // 打光 (工業冷色調 + 暖色補光)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        let robotBaseGroup = new THREE.Group();
+        scene.add(robotBaseGroup);
+
+        // ----------------------------------------------------
+        // 2. 模組化積木生成邏輯 (完美符合實體尺寸比例)
+        // ----------------------------------------------------
+        // 這裡設定方塊大小為 30x30x30，轉軸高 5，半徑 10
+        const CUBE_SIZE = 30; 
+        const PIVOT_HEIGHT = 5;
+
+        // 建立單個 C3 關節模組的 3D 群組
+        function createModule(id, colorHex) {
+            const group = new THREE.Group(); 
+            // ⚠️ 關鍵：Group 的原點 (0,0,0) 就是轉軸的中心點！這樣旋轉才會符合物理學。
+
+            // 1. 繪製頂部轉軸 (Face 1 輸入端)
+            const pivotGeo = new THREE.CylinderGeometry(10, 10, PIVOT_HEIGHT, 32);
+            const pivotMat = new THREE.MeshPhongMaterial({ color: 0x313244 });
+            const pivot = new THREE.Mesh(pivotGeo, pivotMat);
+            // 往上提一半高度，讓原點剛好落在轉軸底面
+            pivot.position.y = PIVOT_HEIGHT / 2; 
+            group.add(pivot);
+
+            // 2. 繪製立方體本體
+            const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+            const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            // 往下推，接在轉軸下面
+            body.position.y = -(CUBE_SIZE / 2);
+            group.add(body);
+
+            // 加上 ID 標籤 (用簡單的小圓球當作正前方指示器)
+            const indicatorGeo = new THREE.SphereGeometry(3, 16, 16);
+            const indicatorMat = new THREE.MeshBasicMaterial({ color: 0xf38ba8 });
+            const indicator = new THREE.Mesh(indicatorGeo, indicatorMat);
+            indicator.position.set(0, -(CUBE_SIZE / 2), CUBE_SIZE / 2 + 2); // 放在正面
+            group.add(indicator);
+
+            group.userData = { id: id };
+            return group;
+        }
+
+        // ----------------------------------------------------
+        // 3. 拓樸樹狀圖解析與組裝引擎
+        // ----------------------------------------------------
+        function rebuildTopology(topologyArray) {
+            // 清空舊的機械臂
+            scene.remove(robotBaseGroup);
+            robotBaseGroup = new THREE.Group();
+            scene.add(robotBaseGroup);
+
+            if (!topologyArray || topologyArray.length === 0) return;
+
+            // 為了方便組裝，我們把所有生成的模組用字典存起來
+            const modules = {}; 
+            
+            // 建立虛擬的主控底座 (粉紅色)
+            const baseModule = createModule(0, 0xf5c2e7);
+            baseModule.position.y = 50; // 把整隻手臂稍微抬高
+            robotBaseGroup.add(baseModule);
+            modules[0] = baseModule;
+
+            // 依照陣列順序依序組裝積木
+            topologyArray.forEach((node) => {
+                const childId = node.id;
+                const parentFace = node.face; // 這是我要接在父節點的哪個面上！
+                
+                // 這裡我們簡化邏輯：假設 ID 是按順序串的，父節點就是 childId - 1
+                // (如果你的實際拓樸更複雜，可以修改這裡的父節點尋找邏輯)
+                const parentId = childId - 1; 
+                const parentModule = modules[parentId];
+
+                if (parentModule) {
+                    const childModule = createModule(childId, 0xf9e2af); // 小弟是黃色
+                    modules[childId] = childModule;
+                    
+                    // 📐 完美的正向運動學對位！
+                    if (parentFace === 0) {
+                        // 【底面 Face 0】：直列往下延伸
+                        // 下移距離 = 轉軸高度 + 方塊高度 + 一點點間隙
+                        childModule.position.y = -(PIVOT_HEIGHT + CUBE_SIZE + 2);
+                    } 
+                    else if (parentFace === 1) {
+                        // 【側面 Face 1】：90度分岔轉彎
+                        // 往右移出半個方塊 + 轉軸高度
+                        childModule.position.x = (CUBE_SIZE / 2) + PIVOT_HEIGHT + 2;
+                        // 往下對齊側面的正中心
+                        childModule.position.y = -(CUBE_SIZE / 2);
+                        // ⚠️ 物理魔法：必須繞 Z 軸旋轉 -90 度，讓轉軸插進側面！
+                        childModule.rotation.z = -Math.PI / 2; 
+                    }
+
+                    // 將子模組「綁定」到父模組上！這樣父轉，子就會跟著甩！
+                    parentModule.add(childModule);
+                }
+            });
+        }
+
+        // ----------------------------------------------------
+        // 4. WebSocket 雲端連線邏輯
+        // ----------------------------------------------------
+        // 因為你的 Render 網址是 https 開頭，所以這裡要用 wss:// 加密 WebSocket
+        const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
+
+        ws.onopen = () => console.log('✅ 成功連線到 Render 伺服器！');
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // 更新 UI 狀態
+            const badge = document.getElementById('statusBadge');
+            badge.className = `status-badge status-${data.status}`;
+            badge.innerText = data.status;
+            document.getElementById('errorMsg').innerText = data.msg || "";
+            document.getElementById('totalCount').innerText = data.total || 0;
+
+            // 如果狀態是 READY 且有拓樸陣列，就觸發 3D 引擎重新組裝！
+            if (data.status === "READY" || data.status === "WORKING") {
+                rebuildTopology(data.topology);
+            } else {
+                // 如果發生錯誤或離線，就把畫面清空
+                rebuildTopology([]); 
+            }
+        };
+
+        ws.onclose = () => {
+            document.getElementById('statusBadge').className = 'status-badge status-OFFLINE';
+            document.getElementById('statusBadge').innerText = '與伺服器斷線';
+        };
+
+        // ----------------------------------------------------
+        // 5. 渲染迴圈 (讓畫面維持 60 FPS 刷新)
+        // ----------------------------------------------------
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); 
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 視窗大小改變時自動適應
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
