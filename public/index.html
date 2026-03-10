@@ -57,29 +57,29 @@
         let robotBaseGroup = new THREE.Group();
         scene.add(robotBaseGroup);
 
-        // 2. 幾何尺寸設定
         const CUBE_SIZE = 30; 
         const PIVOT_HEIGHT = 10;
         const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; 
+        
+        let modules = {}; // 將積木字典拉到全域，方便我們隨時更新角度！
+        let currentTopologyStr = ""; // 紀錄目前的拓樸狀態，避免重複重建模型
 
         function createModule(id, colorHex) {
             const group = new THREE.Group(); 
 
-            // 轉軸
+            // 🌟 轉軸更新為「銀灰色金屬亮面」！(0xa6adc8，加上 shininess 反光)
             const pivotGeo = new THREE.CylinderGeometry(8, 8, PIVOT_HEIGHT, 32);
-            const pivotMat = new THREE.MeshPhongMaterial({ color: 0x313244 });
+            const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
             const pivot = new THREE.Mesh(pivotGeo, pivotMat);
             pivot.position.y = PIVOT_HEIGHT / 2; 
             group.add(pivot);
 
-            // 方塊本體
             const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
             const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
             group.add(body);
 
-            // 正面 ID 指示燈
             const indicatorGeo = new THREE.SphereGeometry(3, 16, 16);
             const indicatorMat = new THREE.MeshBasicMaterial({ color: 0xf38ba8 });
             const indicator = new THREE.Mesh(indicatorGeo, indicatorMat);
@@ -90,17 +90,15 @@
             return group;
         }
 
-        // 3. 拓樸樹狀圖解析與組裝
+        // 3. 拓樸樹狀圖解析與組裝 (只在積木插拔時觸發)
         function rebuildTopology(topologyArray) {
             scene.remove(robotBaseGroup);
             robotBaseGroup = new THREE.Group();
             scene.add(robotBaseGroup);
+            modules = {}; // 清空字典
 
             if (!topologyArray || topologyArray.length === 0) return;
 
-            const modules = {}; 
-            
-            // 底座
             const baseGeo = new THREE.CylinderGeometry(30, 30, 10, 32);
             const baseMat = new THREE.MeshPhongMaterial({ color: 0xf5c2e7 });
             const baseModule = new THREE.Mesh(baseGeo, baseMat);
@@ -123,27 +121,15 @@
                 const parentFace = parentNode.face; 
 
                 if (modules[childId] && modules[parentId]) {
-                    
                     if (parentFace === 0) {
-                        // 【底面 Face 0】：維持朝上
                         modules[childId].position.set(0, TOTAL_HEIGHT, 0);
-                        modules[childId].rotation.set(0, 0, 0);
                     } 
                     else if (parentFace === 1) {
-                        // 【側面 Face 1】：插在側邊
                         modules[childId].position.set(CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
-                        
-                        // 🌟 終極除錯魔法：使用「相對連續旋轉」避免尤拉角錯亂！
-                        modules[childId].rotation.set(0, 0, 0); // 先把角度洗白歸零
-                        
-                        // 動作 1：讓整顆積木向右倒 90 度 (轉軸成功向外插！)
+                        modules[childId].rotation.set(0, 0, 0); 
                         modules[childId].rotateZ(-Math.PI / 2); 
-                        
-                        // 動作 2：此時 Face 1 是朝下的，我們讓積木沿著自己現在的轉軸「翻滾 180 度」！
-                        // 這樣 Face 1 就會完美朝上了！
                         modules[childId].rotateY(Math.PI); 
                     }
-
                     modules[parentId].add(modules[childId]);
                 }
             }
@@ -164,9 +150,32 @@
             document.getElementById('totalCount').innerText = data.total || 0;
 
             if (data.status === "READY" || data.status === "WORKING") {
-                rebuildTopology(data.topology);
+                // 將目前的拓樸狀態轉成字串，用來判斷有沒有增減積木
+                const newTopoStr = data.topology.map(n => `${n.id}-${n.face}`).join('|');
+                
+                // 只有在插拔積木 (骨架改變) 時，才重新建造 3D 模型！
+                if (newTopoStr !== currentTopologyStr) {
+                    rebuildTopology(data.topology);
+                    currentTopologyStr = newTopoStr;
+                }
+
+                // 🌟 即時動態連動魔法：更新每個關節的旋轉角度！
+                data.topology.forEach((node) => {
+                    if (modules[node.id] && node.angle !== undefined) {
+                        // 數學映射：將 LX-224 的 0~1000 轉換成弧度 (-120度 ~ +120度)
+                        // 假設 500 是正前方 (0度)
+                        const angleRad = (node.angle - 500) * (240 / 1000) * (Math.PI / 180);
+                        
+                        // 讓該模組沿著自己的 Y 軸轉動 (就是那根銀色轉軸的方向！)
+                        modules[node.id].rotation.y = angleRad;
+                    }
+                });
+
             } else {
-                rebuildTopology([]); 
+                if (currentTopologyStr !== "") {
+                    rebuildTopology([]); 
+                    currentTopologyStr = "";
+                }
             }
         };
 
