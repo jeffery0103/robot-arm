@@ -22,6 +22,12 @@
         <div id="statusBadge" class="status-badge status-OFFLINE">等待連線...</div>
         <div>系統總節點數: <span id="totalCount">0</span></div>
         <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
+        
+        <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
+            <strong>📐 關節即時角度：</strong>
+            <div id="angleListData" style="margin-top: 5px; font-family: monospace;">等待數據...</div>
+        </div>
+
         <div class="hint">滑鼠左鍵：旋轉視角<br>滑鼠右鍵：平移<br>滾輪：縮放</div>
     </div>
     <div id="canvas-container"></div>
@@ -30,7 +36,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
     <script>
-        // 1. 基礎場景
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
         const gridHelper = new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244);
@@ -58,48 +63,54 @@
         scene.add(robotBaseGroup);
 
         const CUBE_SIZE = 30; 
-        const PIVOT_HEIGHT = 5;
+        const PIVOT_HEIGHT = 5; 
         const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; 
         
-        let modules = {}; // 將積木字典拉到全域，方便我們隨時更新角度！
-        let currentTopologyStr = ""; // 紀錄目前的拓樸狀態，避免重複重建模型
+        let modules = {}; 
+        let currentTopologyStr = ""; 
 
+        // 🌟 核心升級：雙層萬向節系統 (分離結構與馬達旋轉)
         function createModule(id, colorHex) {
-            const group = new THREE.Group(); 
+            const baseGroup = new THREE.Group(); // 外層錨點 (固定接合點)
+            const rotatorGroup = new THREE.Group(); // 內層轉子 (負責跟著馬達轉)
+            
+            baseGroup.add(rotatorGroup);
 
-            // 🌟 轉軸更新為「銀灰色金屬亮面」！(0xa6adc8，加上 shininess 反光)
-            const pivotGeo = new THREE.CylinderGeometry(11, 11, PIVOT_HEIGHT, 32);
+            // 轉軸
+            const pivotGeo = new THREE.CylinderGeometry(13, 13, PIVOT_HEIGHT, 32);
             const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
             const pivot = new THREE.Mesh(pivotGeo, pivotMat);
             pivot.position.y = PIVOT_HEIGHT / 2; 
-            group.add(pivot);
+            rotatorGroup.add(pivot); 
 
+            // 本體
             const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
             const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
-            group.add(body);
+            rotatorGroup.add(body); 
 
+            // 指示燈
             const indicatorGeo = new THREE.SphereGeometry(3, 16, 16);
             const indicatorMat = new THREE.MeshBasicMaterial({ color: 0xf38ba8 });
             const indicator = new THREE.Mesh(indicatorGeo, indicatorMat);
             indicator.position.set(0, PIVOT_HEIGHT + (CUBE_SIZE / 2), CUBE_SIZE / 2 + 1); 
-            group.add(indicator);
+            rotatorGroup.add(indicator); 
 
-            group.userData = { id: id };
-            return group;
+            // 把 rotatorGroup 存起來，之後讓它轉！
+            baseGroup.userData = { id: id, rotator: rotatorGroup };
+            return baseGroup;
         }
 
-        // 3. 拓樸樹狀圖解析與組裝 (只在積木插拔時觸發)
         function rebuildTopology(topologyArray) {
             scene.remove(robotBaseGroup);
             robotBaseGroup = new THREE.Group();
             scene.add(robotBaseGroup);
-            modules = {}; // 清空字典
+            modules = {}; 
 
             if (!topologyArray || topologyArray.length === 0) return;
 
-            const baseGeo = new THREE.CylinderGeometry(30, 30, 10, 32);
+            const baseGeo = new THREE.CylinderGeometry(35, 35, 10, 32);
             const baseMat = new THREE.MeshPhongMaterial({ color: 0xf5c2e7 });
             const baseModule = new THREE.Mesh(baseGeo, baseMat);
             baseModule.position.y = -5; 
@@ -123,19 +134,20 @@
                 if (modules[childId] && modules[parentId]) {
                     if (parentFace === 0) {
                         modules[childId].position.set(0, TOTAL_HEIGHT, 0);
+                        modules[childId].rotation.set(0, 0, 0);
                     } 
                     else if (parentFace === 1) {
                         modules[childId].position.set(CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
-                        modules[childId].rotation.set(0, 0, 0); 
-                        modules[childId].rotateZ(-Math.PI / 2); 
-                        modules[childId].rotateY(Math.PI); 
+                        // 🌟 乾淨俐落！只轉 Z 軸 -90 度，Face 1 自然就會朝上！
+                        modules[childId].rotation.set(0, 0, -Math.PI / 2); 
                     }
-                    modules[parentId].add(modules[childId]);
+                    
+                    // 🌟 關鍵物理連動：小弟必須插在老大的「轉子(rotator)」上！這樣老大轉，小弟才會被帶著轉！
+                    modules[parentId].userData.rotator.add(modules[childId]);
                 }
             }
         }
 
-        // 4. WebSocket 雲端連線
         const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
 
         ws.onopen = () => console.log('✅ 成功連線到 Render 伺服器！');
@@ -150,31 +162,34 @@
             document.getElementById('totalCount').innerText = data.total || 0;
 
             if (data.status === "READY" || data.status === "WORKING") {
-                // 將目前的拓樸狀態轉成字串，用來判斷有沒有增減積木
                 const newTopoStr = data.topology.map(n => `${n.id}-${n.face}`).join('|');
                 
-                // 只有在插拔積木 (骨架改變) 時，才重新建造 3D 模型！
                 if (newTopoStr !== currentTopologyStr) {
                     rebuildTopology(data.topology);
                     currentTopologyStr = newTopoStr;
                 }
 
-                // 🌟 即時動態連動魔法：更新每個關節的旋轉角度！
+                let angleHtmlStr = "";
+                
+                // 🌟 即時動態連動
                 data.topology.forEach((node) => {
                     if (modules[node.id] && node.angle !== undefined) {
-                        // 數學映射：將 LX-224 的 0~1000 轉換成弧度 (-120度 ~ +120度)
-                        // 假設 500 是正前方 (0度)
                         const angleRad = (node.angle - 500) * (240 / 1000) * (Math.PI / 180);
                         
-                        // 讓該模組沿著自己的 Y 軸轉動 (就是那根銀色轉軸的方向！)
-                        modules[node.id].rotation.y = angleRad;
+                        // 🌟 獨立旋轉魔法：只針對內層的 rotator 旋轉，絕對不干擾外層骨架！
+                        modules[node.id].userData.rotator.rotation.y = angleRad;
+                        
+                        angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${node.angle}</span><br>`;
                     }
                 });
+                
+                document.getElementById('angleListData').innerHTML = angleHtmlStr;
 
             } else {
                 if (currentTopologyStr !== "") {
                     rebuildTopology([]); 
                     currentTopologyStr = "";
+                    document.getElementById('angleListData').innerHTML = "等待數據...";
                 }
             }
         };
@@ -184,7 +199,6 @@
             document.getElementById('statusBadge').innerText = '與伺服器斷線';
         };
 
-        // 5. 渲染迴圈
         function animate() {
             requestAnimationFrame(animate);
             controls.update(); 
