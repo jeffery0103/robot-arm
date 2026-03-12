@@ -69,35 +69,30 @@
         let modules = {}; 
         let currentTopologyStr = ""; 
 
-        // 🌟 核心升級：雙層萬向節系統 (分離結構與馬達旋轉)
         function createModule(id, colorHex) {
-            const baseGroup = new THREE.Group(); // 外層錨點 (固定接合點)
-            const rotatorGroup = new THREE.Group(); // 內層轉子 (負責跟著馬達轉)
+            const baseGroup = new THREE.Group(); 
+            const rotatorGroup = new THREE.Group(); 
             
             baseGroup.add(rotatorGroup);
 
-            // 轉軸
             const pivotGeo = new THREE.CylinderGeometry(13, 13, PIVOT_HEIGHT, 32);
             const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
             const pivot = new THREE.Mesh(pivotGeo, pivotMat);
             pivot.position.y = PIVOT_HEIGHT / 2; 
             rotatorGroup.add(pivot); 
 
-            // 本體
             const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
             const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
             rotatorGroup.add(body); 
 
-            // 指示燈
             const indicatorGeo = new THREE.SphereGeometry(3, 16, 16);
             const indicatorMat = new THREE.MeshBasicMaterial({ color: 0xf38ba8 });
             const indicator = new THREE.Mesh(indicatorGeo, indicatorMat);
             indicator.position.set(0, PIVOT_HEIGHT + (CUBE_SIZE / 2), CUBE_SIZE / 2 + 1); 
             rotatorGroup.add(indicator); 
 
-            // 把 rotatorGroup 存起來，之後讓它轉！
             baseGroup.userData = { id: id, rotator: rotatorGroup };
             return baseGroup;
         }
@@ -138,11 +133,9 @@
                     } 
                     else if (parentFace === 1) {
                         modules[childId].position.set(CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
-                        // 🌟 乾淨俐落！只轉 Z 軸 -90 度，Face 1 自然就會朝上！
                         modules[childId].rotation.set(0, 0, -Math.PI / 2); 
                     }
                     
-                    // 🌟 關鍵物理連動：小弟必須插在老大的「轉子(rotator)」上！這樣老大轉，小弟才會被帶著轉！
                     modules[parentId].userData.rotator.add(modules[childId]);
                 }
             }
@@ -171,15 +164,18 @@
 
                 let angleHtmlStr = "";
                 
-                // 🌟 即時動態連動
                 data.topology.forEach((node) => {
                     if (modules[node.id] && node.angle !== undefined) {
+                        // 1. 算給 3D 引擎看的旋轉弧度 (Rad)
                         const angleRad = (node.angle - 500) * (240 / 1000) * (Math.PI / 180);
-                        
-                        // 🌟 獨立旋轉魔法：只針對內層的 rotator 旋轉，絕對不干擾外層骨架！
                         modules[node.id].userData.rotator.rotation.y = angleRad;
                         
-                        angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${node.angle}</span><br>`;
+                        // 🌟 2. 算給人類看的真實角度 (Degree)，並取到小數點第一位
+                        const realAngle = ((node.angle - 500) * (240 / 1000)).toFixed(1);
+                        
+                        // 根據數值正負，加上一點排版巧思，讓文字對齊更好看
+                        const sign = realAngle >= 0 ? "+" : ""; 
+                        angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${sign}${realAngle}°</span><br>`;
                     }
                 });
                 
