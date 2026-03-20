@@ -18,13 +18,17 @@
 </head>
 <body>
     <div id="ui-layer">
-        <h2 style="margin-top: 0;">🦾 3D 數位孿生監控</h2>
+        <h2 style="margin-top: 0;"> 3D 數位監控</h2>
         <div id="statusBadge" class="status-badge status-OFFLINE">等待連線...</div>
         <div>系統總節點數: <span id="totalCount">0</span></div>
         <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
         
+        <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%;">🔓 網頁解鎖通電</button>
+        
+        <div id="controlsContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; display: none;"></div>
+
         <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
-            <strong>📐 關節即時角度：</strong>
+            <strong> 關節即時角度：</strong>
             <div id="angleListData" style="margin-top: 5px; font-family: monospace;">等待數據...</div>
         </div>
 
@@ -68,6 +72,16 @@
         
         let modules = {}; 
         let currentTopologyStr = ""; 
+        const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
+
+        // 綁定解鎖按鈕的點擊事件
+        const btnArm = document.getElementById('btnArm');
+        if (btnArm) {
+            btnArm.addEventListener('click', () => {
+                ws.send(JSON.stringify({ cmd: "ARM" }));
+                btnArm.style.display = 'none'; 
+            });
+        }
 
         function createModule(id, colorHex) {
             const baseGroup = new THREE.Group(); 
@@ -111,9 +125,25 @@
             baseModule.position.y = -5; 
             robotBaseGroup.add(baseModule);
             
+            // 動態生成控制滑桿介面
+            let controlsHtml = "<strong>🎚️ 網頁端控制：</strong><br><br>";
+
             topologyArray.forEach((node) => {
                 modules[node.id] = createModule(node.id, 0xf9e2af);
+                
+                // 根據拓樸建立對應的 HTML 滑桿
+                controlsHtml += `
+                <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 14px;">ID ${node.id}</label>
+                    <input type="range" min="0" max="1000" value="500" id="slider-${node.id}" style="width: 120px; margin: 0 10px;"
+                    oninput="ws.send(JSON.stringify({cmd:'SET_ANGLE', id:${node.id}, angle:parseInt(this.value)}))">
+                </div>`;
             });
+
+            const controlsContainer = document.getElementById('controlsContainer');
+            if (controlsContainer) {
+                controlsContainer.innerHTML = controlsHtml;
+            }
 
             if (modules[1]) {
                 modules[1].position.set(0, 0, 0); 
@@ -141,9 +171,7 @@
             }
         }
 
-        const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
-
-        ws.onopen = () => console.log('✅ 成功連線到 Render 伺服器！');
+        ws.onopen = () => console.log('連線至伺服器成功');
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -151,10 +179,31 @@
             const badge = document.getElementById('statusBadge');
             badge.className = `status-badge status-${data.status}`;
             badge.innerText = data.status;
-            document.getElementById('errorMsg').innerText = data.msg || "";
-            document.getElementById('totalCount').innerText = data.total || 0;
+            
+            const errorMsgEl = document.getElementById('errorMsg');
+            if (errorMsgEl) errorMsgEl.innerText = data.msg || "";
+            
+            const totalCountEl = document.getElementById('totalCount');
+            if (totalCountEl) totalCountEl.innerText = data.total || 0;
 
-            if (data.status === "READY" || data.status === "WORKING") {
+            // 處理 UI 介面（解鎖按鈕與滑桿）的顯示與隱藏
+            const btnArmEl = document.getElementById('btnArm');
+            const controlsContainerEl = document.getElementById('controlsContainer');
+            
+            if (btnArmEl && controlsContainerEl) {
+                if (data.status === "READY") {
+                    btnArmEl.style.display = 'block';
+                    controlsContainerEl.style.display = 'none';
+                } else if (data.status === "WORKING") {
+                    btnArmEl.style.display = 'none';
+                    controlsContainerEl.style.display = 'block';
+                } else {
+                    btnArmEl.style.display = 'none';
+                    controlsContainerEl.style.display = 'none';
+                }
+            }
+
+            if (data.status === "READY" || data.status === "WORKING" || data.status === "HOMING") {
                 const newTopoStr = data.topology.map(n => `${n.id}-${n.face}`).join('|');
                 
                 if (newTopoStr !== currentTopologyStr) {
@@ -166,33 +215,42 @@
                 
                 data.topology.forEach((node) => {
                     if (modules[node.id] && node.angle !== undefined) {
-                        // 1. 算給 3D 引擎看的旋轉弧度 (Rad)
+                        // 更新 3D 模型旋轉
                         const angleRad = (node.angle - 500) * (240 / 1000) * (Math.PI / 180);
                         modules[node.id].userData.rotator.rotation.y = angleRad;
                         
-                        // 🌟 2. 算給人類看的真實角度 (Degree)，並取到小數點第一位
+                        // 雙向同步：檢查實體滑桿是否正被拖曳，若無則更新其數值
+                        const slider = document.getElementById(`slider-${node.id}`);
+                        if (slider && document.activeElement !== slider) {
+                            slider.value = node.angle;
+                        }
+
+                        // 產生角度資訊文字
                         const realAngle = ((node.angle - 500) * (240 / 1000)).toFixed(1);
-                        
-                        // 根據數值正負，加上一點排版巧思，讓文字對齊更好看
                         const sign = realAngle >= 0 ? "+" : ""; 
                         angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${sign}${realAngle}°</span><br>`;
                     }
                 });
                 
-                document.getElementById('angleListData').innerHTML = angleHtmlStr;
+                const angleListDataEl = document.getElementById('angleListData');
+                if (angleListDataEl) angleListDataEl.innerHTML = angleHtmlStr;
 
             } else {
                 if (currentTopologyStr !== "") {
                     rebuildTopology([]); 
                     currentTopologyStr = "";
-                    document.getElementById('angleListData').innerHTML = "等待數據...";
+                    const angleListDataEl = document.getElementById('angleListData');
+                    if (angleListDataEl) angleListDataEl.innerHTML = "等待數據...";
                 }
             }
         };
 
         ws.onclose = () => {
-            document.getElementById('statusBadge').className = 'status-badge status-OFFLINE';
-            document.getElementById('statusBadge').innerText = '與伺服器斷線';
+            const badge = document.getElementById('statusBadge');
+            if (badge) {
+                badge.className = 'status-badge status-OFFLINE';
+                badge.innerText = '與伺服器斷線';
+            }
         };
 
         function animate() {

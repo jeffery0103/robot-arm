@@ -28,14 +28,20 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
             
-            // 如果收到的資料裡面有 status，代表是 ESP32 主控板傳來的狀態更新！
+            // 1. 處理 ESP32 傳上來的狀態更新
             if (data.status) {
-                latestState = data; // 更新記憶體
-                
-                // 📡 廣播給其他所有連線的裝置 (手機、電腦)
+                latestState = data; 
                 wss.clients.forEach((client) => {
                     if (client !== ws && client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify(latestState));
+                    }
+                });
+            } 
+            // 🌟 2. 處理網頁端下達的控制指令 (轉發給 ESP32)
+            else if (data.cmd) {
+                wss.clients.forEach((client) => {
+                    if (client !== ws && client.readyState === WebSocket.OPEN) {
+                        client.send(message.toString()); // 原封不動轉發指令
                     }
                 });
             }
