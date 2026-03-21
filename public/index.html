@@ -7,17 +7,15 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e2e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        /* 🌟 RWD 面板樣式升級 */
         #ui-layer { 
             position: absolute; top: 20px; left: 20px; color: #cdd6f4; pointer-events: none; z-index: 10; 
             background: rgba(49, 50, 68, 0.85); padding: 20px; border-radius: 15px; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.5); min-width: 220px;
             backdrop-filter: blur(4px);
             display: flex; flex-direction: column;
-            max-height: 90vh; /* 防止內容過長超出螢幕 */
+            max-height: 90vh; 
         }
         
-        /* 標題與折疊按鈕區塊 */
         #ui-header { 
             pointer-events: auto; cursor: pointer; user-select: none; 
             text-align: center; padding-bottom: 5px;
@@ -29,14 +27,12 @@
         }
         #toggleIcon:hover { background: rgba(255,255,255,0.2); color: #cdd6f4; }
 
-        /* 面板內容區塊 */
         #ui-content { 
-            pointer-events: none; /* 讓底圖可以點擊穿透 */
-            overflow-y: auto; /* 內容太多時自動產生捲軸 */
+            pointer-events: none; 
+            overflow-y: auto; 
             padding-right: 5px;
             transition: max-height 0.3s ease, opacity 0.3s ease;
         }
-        /* 自訂捲軸樣式，讓它有科技感 */
         #ui-content::-webkit-scrollbar { width: 6px; }
         #ui-content::-webkit-scrollbar-thumb { background: #585b70; border-radius: 3px; }
 
@@ -46,12 +42,9 @@
         .status-ERROR { background: #f38ba8; color: #111; }
         .status-OFFLINE { background: #6c7086; color: #111; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
-        .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; line-height: 1.5; }
-        .kbd-key { background: #45475a; padding: 2px 6px; border-radius: 4px; color: #cdd6f4; font-family: monospace; }
         
         #btnArm, #baseRotationSelect { pointer-events: auto; }
 
-        /* 🌟 手機專屬樣式微調 */
         @media (max-width: 768px) {
             #ui-layer { left: 15px; top: 15px; right: 15px; padding: 15px; min-width: unset; }
         }
@@ -95,13 +88,13 @@
                 <div id="angleListData" style="margin-top: 5px; font-family: monospace;">等待數據...</div>
             </div>
 
-            <div class="hint">
-                <strong>主控端操作指南：</strong><br>
-                1. 使用 <span class="kbd-key">↑</span> <span class="kbd-key">↓</span> 切換當前選取的模組<br>
-                2. 使用 <span class="kbd-key">→</span> 正轉，<span class="kbd-key">←</span> 反轉 (長按)<br>
-                3. 按 <span class="kbd-key">SPACE</span> 所有節點一鍵歸零<br>
-                4. 點擊模型選取關節<br>
-                5. 按 <span class="kbd-key">N</span> 切換網頁/實體遙控模式
+            <div id="endEffectorPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
+                <strong>🎯 末端座標 (相對於底座)：</strong>
+                <div id="xyzDisplay" style="margin-top: 5px; font-family: monospace; font-size: 15px; color: #f9e2af; font-weight: bold; line-height: 1.6;">
+                    X: 0.0 <br>
+                    Y: 0.0 <br>
+                    Z: 0.0
+                </div>
             </div>
         </div>
     </div>
@@ -112,13 +105,9 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
 
     <script>
-        // ==========================================
-        // 🌟 面板折疊控制邏輯
-        // ==========================================
+        // 面板折疊控制邏輯
         const uiContent = document.getElementById('ui-content');
         const toggleIcon = document.getElementById('toggleIcon');
-        
-        // 偵測螢幕寬度：如果是手機 (<768px)，預設為折疊狀態！
         let isUICollapsed = window.innerWidth <= 768; 
 
         function updateUIState() {
@@ -135,14 +124,8 @@
             isUICollapsed = !isUICollapsed;
             updateUIState();
         }
-
-        // 初始化面板狀態
         updateUIState();
 
-
-        // ==========================================
-        // 🌟 3D 渲染與網路通訊核心
-        // ==========================================
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
         const gridHelper = new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244);
@@ -171,6 +154,12 @@
 
         const modulesGroup = new THREE.Group(); 
         globalBaseGroup.add(modulesGroup); 
+
+        // 🌟 隱形追蹤器：末端座標測量點 (為求帥氣，我給它一顆很小的亮粉紅球，幫助你跟老師確認位置！)
+        const endEffectorMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(2, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xf38ba8 })
+        );
 
         const CUBE_SIZE = 30; 
         const PIVOT_HEIGHT = 5; 
@@ -233,7 +222,6 @@
 
         let serverAngles = {}; 
         let lastWsMsgTime = 0; 
-        
         let currentMode = "WEB"; 
         let selectedNodeId = 0; 
 
@@ -267,8 +255,8 @@
                     rebuildTopology([]); 
                     currentTopologyStr = "";
                     selectModule(null);
-                    const angleListDataEl = document.getElementById('angleListData');
-                    if (angleListDataEl) angleListDataEl.innerHTML = "等待數據...";
+                    document.getElementById('angleListData').innerHTML = "等待數據...";
+                    document.getElementById('xyzDisplay').innerHTML = "X: 0.0 <br>Y: 0.0 <br>Z: 0.0";
                 }
             } 
             else if (state === "OFFLINE") {
@@ -332,12 +320,10 @@
                 if (data.mode === "WEB") {
                     modeDisplay.innerText = "🌐 網頁主控";
                     modeDisplay.style.color = "#a6e3a1";
-                    
                     if (selectedNodeId === null) selectModule(0); 
                 } else if (data.mode === "REMOTE") {
                     modeDisplay.innerText = "🎮 實體遙控器";
                     modeDisplay.style.color = "#fab387";
-                    
                     if (selectedNodeId !== null) selectModule(null);
                 }
             }
@@ -462,6 +448,11 @@
                 }
             }
 
+            // 🌟 將隱形追蹤器綁定到最後一顆馬達的 Face 0 (正上方 44.5 處)
+            let lastNodeId = topologyArray[topologyArray.length - 1].id;
+            endEffectorMarker.position.set(0, 44.5, 0);
+            modules[lastNodeId].userData.rotator.add(endEffectorMarker);
+
             selectModule(selectedNodeId);
         }
 
@@ -579,6 +570,9 @@
             }
         });
         
+        // 🌟 核心：利用 3D 引擎運算正向運動學
+        let worldVec = new THREE.Vector3();
+
         function animate() {
             requestAnimationFrame(animate);
             controls.update(); 
@@ -588,6 +582,17 @@
                     const targetRad = (serverAngles[id] - 500) * (240 / 1000) * (Math.PI / 180);
                     modules[id].userData.rotator.rotation.y += (targetRad - modules[id].userData.rotator.rotation.y) * 0.15;
                 }
+            }
+
+            // 🌟 提取末端追蹤球的三維空間座標 (相對於模組組原點)
+            if (latestTopology.length > 0) {
+                endEffectorMarker.getWorldPosition(worldVec);
+                modulesGroup.worldToLocal(worldVec); // 把世界座標轉換為「以底座為原點」的相對座標
+
+                document.getElementById('xyzDisplay').innerHTML = 
+                    `X: ${worldVec.x.toFixed(1)} <br>` + 
+                    `Y: ${worldVec.y.toFixed(1)} <br>` + 
+                    `Z: ${worldVec.z.toFixed(1)}`;
             }
 
             renderer.render(scene, camera);
