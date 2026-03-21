@@ -6,7 +6,40 @@
     <title>3D 模組化機械臂數位孿生</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e2e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #ui-layer { position: absolute; top: 20px; left: 20px; color: #cdd6f4; pointer-events: none; z-index: 10; background: rgba(49, 50, 68, 0.8); padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); min-width: 200px;}
+        
+        /* 🌟 RWD 面板樣式升級 */
+        #ui-layer { 
+            position: absolute; top: 20px; left: 20px; color: #cdd6f4; pointer-events: none; z-index: 10; 
+            background: rgba(49, 50, 68, 0.85); padding: 20px; border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); min-width: 220px;
+            backdrop-filter: blur(4px);
+            display: flex; flex-direction: column;
+            max-height: 90vh; /* 防止內容過長超出螢幕 */
+        }
+        
+        /* 標題與折疊按鈕區塊 */
+        #ui-header { 
+            pointer-events: auto; cursor: pointer; user-select: none; 
+            text-align: center; padding-bottom: 5px;
+        }
+        #ui-header h2 { margin: 0; text-align: left; }
+        #toggleIcon { 
+            font-size: 12px; color: #a6adc8; margin-top: 8px; font-weight: bold; 
+            transition: 0.3s; background: rgba(255,255,255,0.1); border-radius: 10px; padding: 4px;
+        }
+        #toggleIcon:hover { background: rgba(255,255,255,0.2); color: #cdd6f4; }
+
+        /* 面板內容區塊 */
+        #ui-content { 
+            pointer-events: none; /* 讓底圖可以點擊穿透 */
+            overflow-y: auto; /* 內容太多時自動產生捲軸 */
+            padding-right: 5px;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+        }
+        /* 自訂捲軸樣式，讓它有科技感 */
+        #ui-content::-webkit-scrollbar { width: 6px; }
+        #ui-content::-webkit-scrollbar-thumb { background: #585b70; border-radius: 3px; }
+
         .status-badge { display: inline-block; padding: 6px 12px; border-radius: 15px; font-weight: bold; margin-bottom: 10px; }
         .status-READY { background: #a6e3a1; color: #111; }
         .status-WORKING { background: #89b4fa; color: #111; }
@@ -15,47 +48,61 @@
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; line-height: 1.5; }
         .kbd-key { background: #45475a; padding: 2px 6px; border-radius: 4px; color: #cdd6f4; font-family: monospace; }
+        
         #btnArm, #baseRotationSelect { pointer-events: auto; }
+
+        /* 🌟 手機專屬樣式微調 */
+        @media (max-width: 768px) {
+            #ui-layer { left: 15px; top: 15px; right: 15px; padding: 15px; min-width: unset; }
+        }
     </style>
 </head>
 <body>
     <div id="ui-layer">
-        <h2 style="margin-top: 0;"> 3D 數位監控</h2>
-        <div id="statusBadge" class="status-badge status-OFFLINE">等待連線...</div>
-        <div>系統總節點數: <span id="totalCount">0</span></div>
-        <div style="margin-top: 5px;">控制模式: <span id="modeDisplay" style="color:#a6e3a1; font-weight:bold;">🌐 網頁主控</span></div>
-        <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
-        
-        <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%; transition: 0.3s;">🔓 網頁解鎖通電</button>
-        
-        <div id="baseSettings" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
-            <strong>⚙️ 實體底座設定：</strong>
-            <div style="margin-top: 8px; font-size: 14px; display: flex; align-items: center; justify-content: space-between;">
-                <label>接頭方向</label>
-                <select id="baseRotationSelect" style="background: #313244; color: #a6e3a1; border: 1px solid #585b70; border-radius: 4px; padding: 4px; font-weight: bold; cursor: pointer;">
-                    <option value="0">0° (預設: X朝前)</option>
-                    <option value="90">90° (逆時針轉)</option>
-                    <option value="180">180° (轉向後方)</option>
-                    <option value="-90">270° (順時針轉)</option>
-                </select>
+        <div id="ui-header" onclick="toggleUI()">
+            <h2> 3D 數位監控</h2>
+            <div id="toggleIcon">▼ 展開面板 ▼</div>
+        </div>
+
+        <div id="ui-content">
+            <div style="margin-top: 15px;"></div>
+            <div id="statusBadge" class="status-badge status-OFFLINE">等待連線...</div>
+            <div>系統總節點數: <span id="totalCount">0</span></div>
+            <div style="margin-top: 5px;">控制模式: <span id="modeDisplay" style="color:#a6e3a1; font-weight:bold;">🌐 網頁主控</span></div>
+            <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
+            
+            <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%; transition: 0.3s;">🔓 網頁解鎖通電</button>
+            
+            <div id="baseSettings" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
+                <strong>⚙️ 實體底座設定：</strong>
+                <div style="margin-top: 8px; font-size: 14px; display: flex; align-items: center; justify-content: space-between;">
+                    <label>接頭方向</label>
+                    <select id="baseRotationSelect" style="background: #313244; color: #a6e3a1; border: 1px solid #585b70; border-radius: 4px; padding: 4px; font-weight: bold; cursor: pointer;">
+                        <option value="0">0° (預設: X朝前)</option>
+                        <option value="90">90° (逆時針轉)</option>
+                        <option value="180">180° (轉向後方)</option>
+                        <option value="-90">270° (順時針轉)</option>
+                    </select>
+                </div>
             </div>
-        </div>
 
-        <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; font-weight: bold; font-size: 15px;">
-            <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 預設底座 (ID 0)</div>
-        </div>
+            <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; font-weight: bold; font-size: 15px;">
+                <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 預設底座 (ID 0)</div>
+            </div>
 
-        <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
-            <strong> 關節即時角度：</strong>
-            <div id="angleListData" style="margin-top: 5px; font-family: monospace;">等待數據...</div>
-        </div>
+            <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
+                <strong> 關節即時角度：</strong>
+                <div id="angleListData" style="margin-top: 5px; font-family: monospace;">等待數據...</div>
+            </div>
 
-        <div class="hint">
-            <strong>主控端操作指南：</strong><br>
-            1. 使用 <span class="kbd-key">↑</span> <span class="kbd-key">↓</span> 切換當前選取的模組<br>
-            2. 使用 <span class="kbd-key">→</span> 正轉，<span class="kbd-key">←</span> 反轉 (長按)<br>
-            3. 也可直接點擊模型選取關節<br>
-            4. 按 <span class="kbd-key">N</span> 切換網頁/實體遙控模式
+            <div class="hint">
+                <strong>主控端操作指南：</strong><br>
+                1. 使用 <span class="kbd-key">↑</span> <span class="kbd-key">↓</span> 切換當前選取的模組<br>
+                2. 使用 <span class="kbd-key">→</span> 正轉，<span class="kbd-key">←</span> 反轉 (長按)<br>
+                3. 按 <span class="kbd-key">SPACE</span> 所有節點一鍵歸零<br>
+                4. 點擊模型選取關節<br>
+                5. 按 <span class="kbd-key">N</span> 切換網頁/實體遙控模式
+            </div>
         </div>
     </div>
     <div id="canvas-container"></div>
@@ -65,6 +112,37 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
 
     <script>
+        // ==========================================
+        // 🌟 面板折疊控制邏輯
+        // ==========================================
+        const uiContent = document.getElementById('ui-content');
+        const toggleIcon = document.getElementById('toggleIcon');
+        
+        // 偵測螢幕寬度：如果是手機 (<768px)，預設為折疊狀態！
+        let isUICollapsed = window.innerWidth <= 768; 
+
+        function updateUIState() {
+            if (isUICollapsed) {
+                uiContent.style.display = 'none';
+                toggleIcon.innerHTML = '▼ 點擊展開面板 ▼';
+            } else {
+                uiContent.style.display = 'block';
+                toggleIcon.innerHTML = '▲ 點擊折疊面板 ▲';
+            }
+        }
+
+        function toggleUI() {
+            isUICollapsed = !isUICollapsed;
+            updateUIState();
+        }
+
+        // 初始化面板狀態
+        updateUIState();
+
+
+        // ==========================================
+        // 🌟 3D 渲染與網路通訊核心
+        // ==========================================
         const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
         const gridHelper = new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244);
@@ -157,7 +235,7 @@
         let lastWsMsgTime = 0; 
         
         let currentMode = "WEB"; 
-        let selectedNodeId = 0; // 🌟 預設選中 ID 0 (底座)
+        let selectedNodeId = 0; 
 
         setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -255,7 +333,6 @@
                     modeDisplay.innerText = "🌐 網頁主控";
                     modeDisplay.style.color = "#a6e3a1";
                     
-                    // 從實體切回網頁時，預設選取底座
                     if (selectedNodeId === null) selectModule(0); 
                 } else if (data.mode === "REMOTE") {
                     modeDisplay.innerText = "🎮 實體遙控器";
@@ -274,9 +351,8 @@
                 if (newTopoStr !== currentTopologyStr) {
                     rebuildTopology(latestTopology);
                     currentTopologyStr = newTopoStr;
-                    // 當拓樸改變時，確認當前選中的 ID 是否還活著
                     if (selectedNodeId !== null && selectedNodeId !== 0 && !latestTopology.find(n => n.id === selectedNodeId)) {
-                        selectModule(0); // 死掉就退回底座
+                        selectModule(0); 
                     }
                 }
 
@@ -343,7 +419,6 @@
             addBlackEdges(bodyMesh); 
             rotatorGroup.add(bodyMesh); 
 
-            // 🌟 記錄零件類型，方便我們變色時區分
             baseGroup.userData = { id: id, rotator: rotatorGroup };
             pivotMesh.userData = { id: id, type: 'pivot' };
             bodyMesh.userData = { id: id, type: 'body' };
@@ -387,7 +462,6 @@
                 }
             }
 
-            // 重建完成後，套用當前的顏色選取狀態
             selectModule(selectedNodeId);
         }
 
@@ -416,16 +490,14 @@
                 if (object && object.userData && object.userData.id) {
                     selectModule(object.userData.id);
                 } else {
-                    selectModule(0); // 點到無法辨識的東西，預設回底座
+                    selectModule(0); 
                 }
             } else {
-                selectModule(0); // 點擊空白處，預設回底座
+                selectModule(0); 
             }
         });
 
-        // 🌟 終極直接變色函式 (修復牽一髮動全身的蟲蟲！)
         function selectModule(id) {
-            // 1. 先把所有馬達洗回預設顏色 (本體黃色 0xf9e2af，轉軸灰色 0xa6adc8)
             for (let mid in modules) {
                 modules[mid].traverse((child) => {
                     if (child.isMesh && child.userData) {
@@ -438,10 +510,8 @@
             selectedNodeId = id;
             const infoEl = document.getElementById('selectedInfo');
             
-            // 2. 如果選中的是 1~Max 的馬達，嚴格比對 ID 後再漆成「科技藍 (0x89b4fa)」
             if (id !== null && id > 0 && modules[id]) {
                 modules[id].traverse((child) => {
-                    // 💡 關鍵防護罩加回來了：必須 child.userData.id === id 才能變色！
                     if (child.isMesh && child.userData && child.userData.id === id && (child.userData.type === 'pivot' || child.userData.type === 'body')) {
                         child.material.color.setHex(0x89b4fa); 
                     }
@@ -449,54 +519,51 @@
                 infoEl.innerText = `當前操控節點: ID ${id}`;
                 infoEl.style.color = "#89b4fa"; 
             } 
-            // 3. 如果選中的是底座 0，不變色
             else if (id === 0) {
                 infoEl.innerText = "當前操控節點: 預設底座 (ID 0)";
                 infoEl.style.color = "#a6adc8";
             } 
-            // 4. 遙控模式下的「無」
             else {
                 infoEl.innerText = "當前操控節點: 無";
                 infoEl.style.color = "#a6adc8";
             }
         }
 
-        // ==========================================
-        // 🌟 十字鍵智慧控制邏輯 (移除 WASD)
-        // ==========================================
         window.addEventListener('keydown', (event) => {
-            // N 鍵切換模式
             if (event.key === 'n' || event.key === 'N') {
                 ws.send(JSON.stringify({cmd: 'TOGGLE_MODE'}));
                 return;
             }
 
-            // 阻擋系統連發機制，避免過載
-            if (event.repeat) return; 
+            if (event.code === 'Space') {
+                event.preventDefault(); 
+                if (currentMode !== "REMOTE") {
+                    ws.send(JSON.stringify({cmd: 'HOME_ALL'}));
+                }
+                return;
+            }
 
-            // 如果目前是實體遙控器當家，直接鎖死鍵盤操作！
+            if (event.repeat) return; 
             if (currentMode === "REMOTE") return; 
 
-            // 🌟 1. 上下鍵：切換模組 ID
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                // 因為你的硬體會自動連續分配 ID，所以最大 ID 就等於目前拓樸的陣列長度！
+                event.preventDefault(); 
                 let maxId = latestTopology.length; 
                 let currentId = selectedNodeId || 0;
 
                 if (event.key === 'ArrowUp' && currentId < maxId) {
-                    selectModule(currentId + 1); // 往上就是直接 +1，超簡單！
+                    selectModule(currentId + 1); 
                 } else if (event.key === 'ArrowDown' && currentId > 0) {
-                    selectModule(currentId - 1); // 往下就是直接 -1，完美！
+                    selectModule(currentId - 1); 
                 }
-                return; // 切換 ID 完畢，不往下執行
+                return; 
             }
 
-            // 🌟 2. 左右鍵：控制旋轉 (底座 0 不可轉)
             if (!selectedNodeId || selectedNodeId === 0) return; 
             
             let dir = 0;
-            if (event.key === 'ArrowRight') dir = 1;  // 右鍵正轉
-            if (event.key === 'ArrowLeft') dir = -1;  // 左鍵反轉
+            if (event.key === 'ArrowRight') dir = 1;  
+            if (event.key === 'ArrowLeft') dir = -1;  
 
             if (dir !== 0) {
                 ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: dir}));
@@ -507,7 +574,6 @@
             if (currentMode === "REMOTE") return;
             if (!selectedNodeId || selectedNodeId === 0) return; 
 
-            // 只有放開左右鍵時才發送停止指令
             if (['ArrowRight', 'ArrowLeft'].includes(event.key)) {
                 ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: 0})); 
             }
