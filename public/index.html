@@ -131,14 +131,12 @@
         scene.add(gridHelper);
 
         // ==========================================
-        // 🌟 新增：XYZ 三軸輔助線與永遠面向鏡頭的標籤
+        // 🌟 修復當機 Bug：使用預設顏色的輔助線
         // ==========================================
         const axesHelper = new THREE.AxesHelper(100);
-        axesHelper.setColors(0xf38ba8, 0xa6e3a1, 0x89b4fa); // 統一 UI 顏色: X紅, Y綠, Z藍
         scene.add(axesHelper);
 
         function createAxisLabel(text, position, colorStr) {
-            // 利用 Canvas 畫出帶有透明背景的文字
             const canvas = document.createElement('canvas');
             canvas.width = 128;
             canvas.height = 64;
@@ -151,19 +149,18 @@
             ctx.fillStyle = colorStr;
             ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
-            // 轉換為材質並建立 Sprite 物件
             const texture = new THREE.CanvasTexture(canvas);
-            const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false }); // depthTest: false 讓字不會被網格擋住
+            const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false }); 
             const sprite = new THREE.Sprite(spriteMat);
             sprite.position.copy(position);
             sprite.scale.set(20, 10, 1);
             return sprite;
         }
 
-        // 把標籤掛在各軸的末端 (長度 100，所以標籤放在 110 的位置)
-        scene.add(createAxisLabel('+X', new THREE.Vector3(110, 0, 0), '#f38ba8'));
-        scene.add(createAxisLabel('+Y', new THREE.Vector3(0, 110, 0), '#a6e3a1'));
-        scene.add(createAxisLabel('+Z', new THREE.Vector3(0, 0, 110), '#89b4fa'));
+        // 使用紅(X)、綠(Y)、藍(Z)作為對應顏色
+        scene.add(createAxisLabel('+X', new THREE.Vector3(110, 0, 0), '#ff0000'));
+        scene.add(createAxisLabel('+Y', new THREE.Vector3(0, 110, 0), '#00ff00'));
+        scene.add(createAxisLabel('+Z', new THREE.Vector3(0, 0, 110), '#0000ff'));
         // ==========================================
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -341,7 +338,15 @@
 
         ws.onmessage = (event) => {
             lastWsMsgTime = Date.now(); 
-            const data = JSON.parse(event.data);
+            let data;
+            
+            // 🌟 終極防禦：避免 JSON 壞檔讓整個網頁癱瘓
+            try {
+                data = JSON.parse(event.data);
+            } catch (err) {
+                console.error("⚠️ 忽略無效封包:", event.data);
+                return; // 直接跳過，不讓網頁當機！
+            }
             
             if (data.total !== undefined) {
                 const totalCountEl = document.getElementById('totalCount');
@@ -428,7 +433,7 @@
             baseGroup.add(pivotMesh); 
 
             let bodyMesh;
-            const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
+            const bodyMat = new MeshPhongMaterial({ color: colorHex });
             if (bodyStlGeometry) {
                 bodyMesh = new THREE.Mesh(bodyStlGeometry, bodyMat);
             } else {
@@ -621,7 +626,6 @@
             if (latestTopology.length > 0) {
                 endEffectorMarker.getWorldPosition(worldVec);
                 
-                // 🌟 直接輸出最純淨、不受父層級干擾的「絕對虛擬世界座標」！
                 document.getElementById('xyzDisplay').innerHTML = 
                     `X: ${worldVec.x.toFixed(1)} <br>` + 
                     `Y: ${worldVec.y.toFixed(1)} <br>` + 
