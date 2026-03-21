@@ -45,8 +45,14 @@
         
         #btnArm, #baseRotationSelect { pointer-events: auto; }
 
+        /* 🌟 魔法：手機螢幕尺寸專屬設定 */
         @media (max-width: 768px) {
             #ui-layer { left: 15px; top: 15px; right: 15px; padding: 15px; min-width: unset; }
+            
+            /* 強制隱藏所有互動元件與提示，讓手機端變成純監視器！ */
+            #btnArm, #baseSettings, .hint { 
+                display: none !important; 
+            }
         }
     </style>
 </head>
@@ -95,6 +101,15 @@
                     Y: 0.0 <br>
                     Z: 0.0
                 </div>
+            </div>
+
+            <div class="hint">
+                <strong>主控端操作指南：</strong><br>
+                1. 使用 <span class="kbd-key">↑</span> <span class="kbd-key">↓</span> 切換當前選取的模組<br>
+                2. 使用 <span class="kbd-key">→</span> 正轉，<span class="kbd-key">←</span> 反轉 (長按)<br>
+                3. 按 <span class="kbd-key">SPACE</span> 所有節點一鍵歸零<br>
+                4. 點擊模型選取關節<br>
+                5. 按 <span class="kbd-key">N</span> 切換網頁/實體遙控模式
             </div>
         </div>
     </div>
@@ -169,7 +184,7 @@
         scene.add(labelY);
         scene.add(labelZ);
 
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
         camera.position.set(120, 100, 180); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -234,8 +249,8 @@
             baseMesh.position.y = baseHeightOffset; 
             
             addBlackEdges(baseMesh); 
-            globalBaseGroup.add(baseMesh); // 底座加入總群組
-            modulesGroup.position.y = baseHeightOffset; // 馬達群組放在底座上方
+            globalBaseGroup.add(baseMesh); 
+            modulesGroup.position.y = baseHeightOffset; 
             checkAndRebuild();
         });
 
@@ -413,7 +428,6 @@
             });
         }
 
-        // 🌟 魔法二：底座下拉選單現在只轉馬達 (modulesGroup)！
         const baseRotationSelect = document.getElementById('baseRotationSelect');
         if (baseRotationSelect) {
             baseRotationSelect.addEventListener('change', (e) => {
@@ -499,17 +513,15 @@
                 modules[lastNodeId].userData.rotator.add(endEffectorMarker);
             }
 
-            // 🌟 魔法一：只有 Y 軸會跟著疊高，X 軸和 Z 軸維持 100 長度不變！
-            let maxYLen = 100;
+            let maxAxisLen = 100;
             if (topologyArray.length > 0) {
-                maxYLen = Math.max(100, topologyArray.length * 44.5 + 22.5); 
+                maxAxisLen = Math.max(100, topologyArray.length * 44.5 + 22.5); 
             }
             
-            axesHelper.scale.set(1, maxYLen / 100, 1);
+            axesHelper.scale.set(1, maxAxisLen / 100, 1);
             
-            // X、Z 標籤固定在 110，只有 Y 標籤往上推
             labelX.position.set(110, 0, 0);
-            labelY.position.set(0, maxYLen + 5, 0);
+            labelY.position.set(0, maxAxisLen + 5, 0);
             labelZ.position.set(0, 0, 110);
 
             selectModule(selectedNodeId);
