@@ -15,7 +15,7 @@
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; line-height: 1.5; }
         .kbd-key { background: #45475a; padding: 2px 6px; border-radius: 4px; color: #cdd6f4; font-family: monospace; }
-        #btnArm, #baseRotationSelect { pointer-events: auto; }
+        #btnArm, #baseRotationSelect, input[type=range] { pointer-events: auto; }
     </style>
 </head>
 <body>
@@ -39,6 +39,8 @@
                 </select>
             </div>
         </div>
+
+        <div id="controlsContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; display: none;"></div>
 
         <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; font-weight: bold; font-size: 15px;">
             <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 無</div>
@@ -86,17 +88,12 @@
         dirLight.position.set(100, 150, 50);
         scene.add(dirLight);
 
-        // ==========================================
-        // 🌟 3D 群組架構重構 (底座永不消失！)
-        // ==========================================
         const globalBaseGroup = new THREE.Group(); 
         scene.add(globalBaseGroup);
 
         const modulesGroup = new THREE.Group(); 
         globalBaseGroup.add(modulesGroup); 
 
-        // 🌟 積木連接點的間距常數 (如果 STL 縮放 0.5 後有穿模，請修改這兩個數字)
-        // 假設原圖外殼高度 60，縮小 0.5 變 30；轉軸原圖 10，縮小變 5。
         const CUBE_SIZE = 30; 
         const PIVOT_HEIGHT = 5; 
         const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; 
@@ -104,7 +101,6 @@
         let modules = {}; 
         let currentTopologyStr = ""; 
         let latestTopology = []; 
-        let currentAngles = {};  
         let baseHeightOffset = 0; 
 
         let baseStlGeometry = null;
@@ -112,7 +108,6 @@
         let bodyStlGeometry = null;
         const stlLoader = new THREE.STLLoader();
 
-        // 🌟 邊線生成輔助函式
         function addBlackEdges(mesh) {
             const edges = new THREE.EdgesGeometry(mesh.geometry, 30);
             const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1 });
@@ -124,13 +119,11 @@
             if (latestTopology.length > 0) rebuildTopology(latestTopology);
         }
 
-        // 🌟 1. 載入底座
         stlLoader.load('./base.stl', function (geometry) {
             geometry.computeVertexNormals();
             geometry.rotateY(Math.PI / 2); 
-            geometry.scale(0.5, 0.5, 0.5); // 🌟 改為 0.5 倍
+            geometry.scale(0.5, 0.5, 0.5); 
 
-            // 計算邊界框，把底部推到 y=0
             geometry.computeBoundingBox();
             baseHeightOffset = -geometry.boundingBox.min.y; 
 
@@ -141,31 +134,185 @@
             addBlackEdges(baseMesh); 
             globalBaseGroup.add(baseMesh);
 
-            // 馬達的起點跟著往上推
             modulesGroup.position.y = baseHeightOffset; 
             
             checkAndRebuild();
         });
 
-        // 🌟 2. 載入轉軸
         stlLoader.load('./pivot.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); // 🌟 改回轉 Y 軸，不翻跟斗了！
-            geometry.scale(0.5, 0.5, 0.5); // 🌟 改為 0.5 倍
+            geometry.rotateY(Math.PI); 
+            geometry.scale(0.5, 0.5, 0.5); 
             pivotStlGeometry = geometry;
             checkAndRebuild(); 
         });
 
-        // 🌟 3. 載入外殼本體
         stlLoader.load('./body.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); // 🌟 改回轉 Y 軸
-            geometry.scale(0.5, 0.5, 0.5); // 🌟 改為 0.5 倍
+            geometry.rotateY(Math.PI); 
+            geometry.scale(0.5, 0.5, 0.5); 
             bodyStlGeometry = geometry;
             checkAndRebuild(); 
         });
 
         const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
+
+        let serverAngles = {}; 
+        let lastWsMsgTime = 0; 
+
+        // 🌟 網頁看門狗
+        setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                if (Date.now() - lastWsMsgTime > 2000) {
+                    updateSystemUI("S3_OFFLINE");
+                }
+            }
+        }, 1000);
+
+        // 🌟 集中管理 UI 狀態
+        function updateSystemUI(state, data = null) {
+            const badge = document.getElementById('statusBadge');
+            const btnArmEl = document.getElementById('btnArm');
+            const controlsContainerEl = document.getElementById('controlsContainer');
+            const errorMsgEl = document.getElementById('errorMsg');
+
+            if (state === "SERVER_ONLY") {
+                badge.className = 'status-badge status-OFFLINE';
+                badge.style.background = '#89b4fa';
+                badge.innerText = '🌐 伺服器連線中 (尋找主板...)';
+                if (btnArmEl) btnArmEl.style.display = 'none';
+                if (controlsContainerEl) controlsContainerEl.style.display = 'none';
+            } 
+            else if (state === "S3_OFFLINE") {
+                badge.className = 'status-badge status-ERROR';
+                badge.style.background = '#f38ba8';
+                badge.innerText = '⚠️ 伺服器已連線，但 S3 主板未上線';
+                if (btnArmEl) btnArmEl.style.display = 'none';
+                if (controlsContainerEl) controlsContainerEl.style.display = 'none';
+                
+                if (currentTopologyStr !== "") {
+                    latestTopology = [];
+                    rebuildTopology([]); 
+                    currentTopologyStr = "";
+                    selectModule(null);
+                    const angleListDataEl = document.getElementById('angleListData');
+                    if (angleListDataEl) angleListDataEl.innerHTML = "等待數據...";
+                }
+            } 
+            else if (state === "OFFLINE") {
+                badge.className = 'status-badge status-OFFLINE';
+                badge.style.background = '';
+                badge.innerText = '❌ 伺服器斷線';
+                if (btnArmEl) btnArmEl.style.display = 'none';
+                if (controlsContainerEl) controlsContainerEl.style.display = 'none';
+            } 
+            else if (state === "ONLINE" && data) {
+                badge.className = `status-badge status-${data.status}`;
+                badge.style.background = ''; 
+                badge.innerText = data.status;
+                if (errorMsgEl) errorMsgEl.innerText = data.msg || "";
+
+                if (data.status === "READY") {
+                    if (btnArmEl) {
+                        btnArmEl.style.display = 'block';
+                        btnArmEl.innerText = "🔓 網頁解鎖通電";
+                        btnArmEl.style.background = '#a6e3a1';
+                        btnArmEl.disabled = false;
+                        btnArmEl.style.cursor = 'pointer';
+                    }
+                    if (controlsContainerEl) controlsContainerEl.style.display = 'none';
+                } else if (data.status === "WORKING") {
+                    if (btnArmEl) {
+                        btnArmEl.style.display = 'block';
+                        btnArmEl.innerText = "✅ 系統已解鎖 / 允許操控";
+                        btnArmEl.style.background = '#89b4fa';
+                        btnArmEl.disabled = true;
+                        btnArmEl.style.cursor = 'not-allowed';
+                    }
+                    if (controlsContainerEl) controlsContainerEl.style.display = 'block';
+                } else if (data.status === "HOMING") {
+                    if (btnArmEl) {
+                        btnArmEl.style.display = 'block';
+                        btnArmEl.innerText = "🧘 歸零中...";
+                        btnArmEl.style.background = '#f9e2af';
+                        btnArmEl.disabled = true;
+                    }
+                    if (controlsContainerEl) controlsContainerEl.style.display = 'none';
+                } else {
+                    if (btnArmEl) btnArmEl.style.display = 'none';
+                    if (controlsContainerEl) controlsContainerEl.style.display = 'none';
+                }
+            }
+        }
+
+        ws.onopen = () => {
+            console.log('連線至伺服器成功');
+            updateSystemUI("SERVER_ONLY");
+            ws.send(JSON.stringify({cmd: 'STATUS'}));
+        };
+
+        ws.onmessage = (event) => {
+            lastWsMsgTime = Date.now(); 
+            const data = JSON.parse(event.data);
+            
+            if (data.total !== undefined) {
+                const totalCountEl = document.getElementById('totalCount');
+                if (totalCountEl) totalCountEl.innerText = data.total;
+            }
+
+            updateSystemUI("ONLINE", data);
+
+            if (data.status === "READY" || data.status === "WORKING" || data.status === "HOMING") {
+                latestTopology = data.topology || [];
+                const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
+                
+                if (newTopoStr !== currentTopologyStr) {
+                    rebuildTopology(latestTopology);
+                    currentTopologyStr = newTopoStr;
+                    if (selectedNodeId && !latestTopology.find(n => n.id === selectedNodeId)) {
+                        selectModule(null);
+                    }
+                }
+
+                let angleHtmlStr = "";
+                latestTopology.forEach((node) => {
+                    if (modules[node.id] && node.angle !== undefined) {
+                        serverAngles[node.id] = node.angle; 
+
+                        const slider = document.getElementById(`slider-${node.id}`);
+                        if (slider && document.activeElement !== slider) {
+                            slider.value = node.angle;
+                        }
+
+                        const realAngle = ((node.angle - 500) * (240 / 1000)).toFixed(1);
+                        const sign = realAngle >= 0 ? "+" : ""; 
+                        angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${sign}${realAngle}°</span><br>`;
+                    }
+                });
+                
+                const angleListDataEl = document.getElementById('angleListData');
+                if (angleListDataEl) angleListDataEl.innerHTML = angleHtmlStr;
+            }
+        };
+
+        ws.onclose = () => {
+            updateSystemUI("OFFLINE");
+        };
+
+        let sliderTimeout = null;
+        let lastWsSendTime = 0;
+        window.throttledSliderSend = function(id, angle) {
+            const now = Date.now();
+            if (now - lastWsSendTime > 100) {
+                ws.send(JSON.stringify({cmd: 'SET_ANGLE', id: id, angle: angle}));
+                lastWsSendTime = now;
+            } else {
+                clearTimeout(sliderTimeout);
+                sliderTimeout = setTimeout(() => {
+                    ws.send(JSON.stringify({cmd: 'SET_ANGLE', id: id, angle: angle}));
+                }, 100);
+            }
+        };
 
         const btnArm = document.getElementById('btnArm');
         if (btnArm) {
@@ -195,7 +342,6 @@
                 pivotMesh = new THREE.Mesh(pivotGeo, pivotMat);
                 pivotMesh.position.y = PIVOT_HEIGHT / 2; 
             }
-            
             addBlackEdges(pivotMesh); 
             baseGroup.add(pivotMesh); 
 
@@ -208,7 +354,6 @@
                 bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
                 bodyMesh.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
             }
-            
             addBlackEdges(bodyMesh); 
             rotatorGroup.add(bodyMesh); 
 
@@ -220,7 +365,6 @@
         }
 
         function rebuildTopology(topologyArray) {
-            // 🌟 清空馬達，底座永遠留著
             while(modulesGroup.children.length > 0) {
                 modulesGroup.remove(modulesGroup.children[0]);
             }
@@ -228,14 +372,22 @@
 
             if (!topologyArray || topologyArray.length === 0) return;
 
+            let controlsHtml = "<strong>🎚️ 網頁端控制：</strong><br><br>";
+
             topologyArray.forEach((node) => {
                 modules[node.id] = createModule(node.id, 0xf9e2af);
+                controlsHtml += `
+                <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 14px;">ID ${node.id}</label>
+                    <input type="range" min="0" max="1000" value="500" id="slider-${node.id}" style="width: 120px; margin: 0 10px;"
+                    oninput="throttledSliderSend(${node.id}, parseInt(this.value))">
+                </div>`;
             });
 
+            const controlsContainer = document.getElementById('controlsContainer');
+            if (controlsContainer) controlsContainer.innerHTML = controlsHtml;
+
             if (modules[1]) {
-                // 💡 針對第一顆馬達與底座的接合：
-                // 如果你發現第一顆馬達像截圖一樣「浮在底座上」有一點縫隙
-                // 可以把這裡的 Y 稍微下沉，例如改成 modules[1].position.set(0, -2.5, 0); 依實體微調！
                 modules[1].position.set(0, 0, 0); 
                 modulesGroup.add(modules[1]);
             }
@@ -247,16 +399,11 @@
                 const parentFace = parentNode.face; 
 
                 if (modules[childId] && modules[parentId]) {
-                    
                     if (parentFace === 0) { 
-                        // 👉 插在頂部 (Face 0)
-                        // 絕對精準算式：(49 + 40) * 0.5 = 44.5
                         modules[childId].position.set(0, 44.5, 0);
                         modules[childId].rotation.set(0, 0, 0); 
                     } 
                     else if (parentFace === 1) { 
-                        // 👉 插在側邊 (Face 1)
-                        // 絕對精準算式：X 往左偏 40*0.5，Y 對齊中心 49*0.5
                         modules[childId].position.set(-20.0, 24.5, 0);
                         modules[childId].rotation.set(0, 0, Math.PI / 2); 
                     }
@@ -292,8 +439,6 @@
         });
 
         function selectModule(id) {
-            // 🌟 第一步：無差別全體熄燈！
-            // 掃描整個馬達群組，把所有會發光的材質全部切回黑色，保證不會有殘留的亮光
             modulesGroup.traverse((child) => {
                 if (child.isMesh && child.material && child.material.emissive) {
                     child.material.emissive.setHex(0x000000);
@@ -303,11 +448,8 @@
             selectedNodeId = id;
             const infoEl = document.getElementById('selectedInfo');
             
-            // 🌟 第二步：精準點亮指定的 ID！
             if (id && modules[id]) {
                 modules[id].traverse((child) => {
-                    // 💡 關鍵防護罩：加上 child.userData.id === id 的判斷！
-                    // 這樣就算它掃描到掛在身上的子模組，只要 ID 不對，就不會讓它發光！
                     if (child.isMesh && child.userData && child.userData.id === id && child.material.emissive) {
                         child.material.emissive.setHex(0x333333); 
                     }
@@ -321,119 +463,40 @@
         }
 
         window.addEventListener('keydown', (event) => {
-            if (!selectedNodeId) return; 
+            if (!selectedNodeId || event.repeat) return; 
+            
+            let dir = 0;
+            if (['w', 'W', 'd', 'D', 'ArrowRight', 'ArrowUp'].includes(event.key)) dir = 1;
+            if (['a', 'A', 's', 'S', 'ArrowLeft', 'ArrowDown'].includes(event.key)) dir = -1;
 
-            let angle = currentAngles[selectedNodeId] !== undefined ? currentAngles[selectedNodeId] : 500;
-            let changed = false;
-            const STEP = 20; 
-
-            if (['w', 'W', 'd', 'D', 'ArrowRight', 'ArrowUp'].includes(event.key)) {
-                angle += STEP;
-                changed = true;
-            } else if (['a', 'A', 's', 'S', 'ArrowLeft', 'ArrowDown'].includes(event.key)) {
-                angle -= STEP;
-                changed = true;
-            }
-
-            if (changed) {
-                angle = Math.max(0, Math.min(1000, angle));
-                currentAngles[selectedNodeId] = angle; 
-                ws.send(JSON.stringify({cmd: 'SET_ANGLE', id: selectedNodeId, angle: angle}));
+            if (dir !== 0) {
+                ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: dir}));
             }
         });
 
-        ws.onopen = () => console.log('連線至伺服器成功');
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            const badge = document.getElementById('statusBadge');
-            badge.className = `status-badge status-${data.status}`;
-            badge.innerText = data.status;
-            
-            const errorMsgEl = document.getElementById('errorMsg');
-            if (errorMsgEl) errorMsgEl.innerText = data.msg || "";
-            
-            const totalCountEl = document.getElementById('totalCount');
-            if (totalCountEl) totalCountEl.innerText = data.total || 0;
-
-            const btnArmEl = document.getElementById('btnArm');
-            if (btnArmEl) {
-                if (data.status === "READY") {
-                    btnArmEl.style.display = 'block';
-                    btnArmEl.innerText = "🔓 網頁解鎖通電";
-                    btnArmEl.style.background = '#a6e3a1';
-                    btnArmEl.disabled = false;
-                    btnArmEl.style.cursor = 'pointer';
-                } else if (data.status === "WORKING") {
-                    btnArmEl.style.display = 'block';
-                    btnArmEl.innerText = "✅ 系統已解鎖 / 允許操控";
-                    btnArmEl.style.background = '#89b4fa';
-                    btnArmEl.disabled = true;
-                    btnArmEl.style.cursor = 'not-allowed';
-                } else if (data.status === "HOMING") {
-                    btnArmEl.style.display = 'block';
-                    btnArmEl.innerText = "🧘 歸零中...";
-                    btnArmEl.style.background = '#f9e2af';
-                    btnArmEl.disabled = true;
-                } else {
-                    btnArmEl.style.display = 'none';
-                }
+        window.addEventListener('keyup', (event) => {
+            if (!selectedNodeId) return; 
+            if (['w', 'W', 'd', 'D', 'ArrowRight', 'ArrowUp', 'a', 'A', 's', 'S', 'ArrowLeft', 'ArrowDown'].includes(event.key)) {
+                ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: 0})); 
             }
-
-            if (data.status === "READY" || data.status === "WORKING" || data.status === "HOMING") {
-                latestTopology = data.topology || [];
-                const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
-                
-                if (newTopoStr !== currentTopologyStr) {
-                    rebuildTopology(latestTopology);
-                    currentTopologyStr = newTopoStr;
-                    if (selectedNodeId && !latestTopology.find(n => n.id === selectedNodeId)) {
-                        selectModule(null);
-                    }
-                }
-
-                let angleHtmlStr = "";
-                
-                latestTopology.forEach((node) => {
-                    if (modules[node.id] && node.angle !== undefined) {
-                        currentAngles[node.id] = node.angle; 
-
-                        const angleRad = (node.angle - 500) * (240 / 1000) * (Math.PI / 180);
-                        modules[node.id].userData.rotator.rotation.y = angleRad;
-                        
-                        const realAngle = ((node.angle - 500) * (240 / 1000)).toFixed(1);
-                        const sign = realAngle >= 0 ? "+" : ""; 
-                        angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${sign}${realAngle}°</span><br>`;
-                    }
-                });
-                
-                const angleListDataEl = document.getElementById('angleListData');
-                if (angleListDataEl) angleListDataEl.innerHTML = angleHtmlStr;
-
-            } else {
-                if (currentTopologyStr !== "") {
-                    latestTopology = [];
-                    rebuildTopology([]); 
-                    currentTopologyStr = "";
-                    selectModule(null);
-                    const angleListDataEl = document.getElementById('angleListData');
-                    if (angleListDataEl) angleListDataEl.innerHTML = "等待數據...";
-                }
-            }
-        };
-
-        ws.onclose = () => {
-            const badge = document.getElementById('statusBadge');
-            if (badge) {
-                badge.className = 'status-badge status-OFFLINE';
-                badge.innerText = '與伺服器斷線';
-            }
-        };
-
+        });
+        
+        // ==========================================
+        // 🌟 就是這裡啦！被你弄丟的平滑插值 (Lerp) 引擎
+        // ==========================================
         function animate() {
             requestAnimationFrame(animate);
             controls.update(); 
+            
+            // 讀取 S3 認證的真實狀態，並平滑地滑動過去！
+            for (let id in serverAngles) {
+                if (modules[id]) {
+                    const targetRad = (serverAngles[id] - 500) * (240 / 1000) * (Math.PI / 180);
+                    // 每一幀只靠近目標 15%，製造極致絲滑的避震感
+                    modules[id].userData.rotator.rotation.y += (targetRad - modules[id].userData.rotator.rotation.y) * 0.15;
+                }
+            }
+
             renderer.render(scene, camera);
         }
         animate();
