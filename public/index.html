@@ -6,16 +6,17 @@
     <title>3D 模組化機械臂數位孿生</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e2e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #ui-layer { position: absolute; top: 20px; left: 20px; color: #cdd6f4; pointer-events: none; z-index: 10; background: rgba(49, 50, 68, 0.8); padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        #ui-layer { position: absolute; top: 20px; left: 20px; color: #cdd6f4; pointer-events: none; z-index: 10; background: rgba(49, 50, 68, 0.8); padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); min-width: 200px;}
         .status-badge { display: inline-block; padding: 6px 12px; border-radius: 15px; font-weight: bold; margin-bottom: 10px; }
         .status-READY { background: #a6e3a1; color: #111; }
         .status-WORKING { background: #89b4fa; color: #111; }
         .status-ERROR { background: #f38ba8; color: #111; }
         .status-OFFLINE { background: #6c7086; color: #111; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
-        .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; }
+        .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; line-height: 1.5; }
+        .kbd-key { background: #45475a; padding: 2px 6px; border-radius: 4px; color: #cdd6f4; font-family: monospace; }
         
-        /* 讓下拉選單跟按鈕可以被滑鼠點擊 */
+        /* 讓選單和按鈕可以被滑鼠點擊 */
         #btnArm, #baseRotationSelect { pointer-events: auto; }
     </style>
 </head>
@@ -26,7 +27,7 @@
         <div>系統總節點數: <span id="totalCount">0</span></div>
         <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
         
-        <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%;">🔓 網頁解鎖通電</button>
+        <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%; transition: 0.3s;">🔓 網頁解鎖通電</button>
         
         <div id="baseSettings" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
             <strong>⚙️ 實體底座設定：</strong>
@@ -41,14 +42,22 @@
             </div>
         </div>
 
-        <div id="controlsContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; display: none;"></div>
+        <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; font-weight: bold; font-size: 15px;">
+            <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 無</div>
+        </div>
 
         <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
             <strong> 關節即時角度：</strong>
             <div id="angleListData" style="margin-top: 5px; font-family: monospace;">等待數據...</div>
         </div>
 
-        <div class="hint">滑鼠左鍵：旋轉視角<br>滑鼠右鍵：平移<br>滾輪：縮放</div>
+        <div class="hint">
+            <strong>操作指南：</strong><br>
+            1. 滑鼠左鍵點擊模型選取關節<br>
+            2. 使用 <span class="kbd-key">W</span> <span class="kbd-key">D</span> / <span class="kbd-key">↑</span> <span class="kbd-key">→</span> 正轉<br>
+            3. 使用 <span class="kbd-key">A</span> <span class="kbd-key">S</span> / <span class="kbd-key">↓</span> <span class="kbd-key">←</span> 反轉<br>
+            (空白處拖拉可旋轉/平移視角)
+        </div>
     </div>
     <div id="canvas-container"></div>
 
@@ -89,58 +98,65 @@
         
         let modules = {}; 
         let currentTopologyStr = ""; 
-        const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
+        let latestTopology = []; // 記住最新的拓樸，方便模型載入後重新繪製
+        let currentAngles = {};  // 記住每個關節的角度，供鍵盤使用
+        let baseOffsetAngle = 0; // 記錄底座的旋轉角度
 
         // 🌟 STL 模型存放變數
         let baseStlGeometry = null;
         let pivotStlGeometry = null;
         let bodyStlGeometry = null;
-        let baseOffsetAngle = 0; // 記錄底座的旋轉角度
         const stlLoader = new THREE.STLLoader();
 
-        // 🌟 1. 載入底座 (base.stl)
+        // 幫 STL 載入加上「強制重繪」的功能，解決下載太慢的 Race Condition
+        function checkAndRebuild() {
+            if (latestTopology.length > 0) rebuildTopology(latestTopology);
+        }
+
+        // 1. 載入底座
         stlLoader.load('./base.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI / 2); // 將 SW 的 (X朝前,Z朝右) 轉換為網頁座標系 (-Z朝前,+X朝右)
-            // geometry.scale(0.5, 0.5, 0.5); // 如果載入太大，可以解開這行調整縮放比例
+            geometry.rotateY(Math.PI / 2); 
+            // geometry.scale(0.5, 0.5, 0.5); // 如果太大可以解開這行縮放
             baseStlGeometry = geometry;
-        }, undefined, () => console.log("⚠️ 未找到 base.stl，將使用預設圓柱"));
+            checkAndRebuild(); // 下載完畢，強制重畫！
+        });
 
-        // 🌟 2. 載入轉軸 (pivot.stl)
+        // 2. 載入轉軸
         stlLoader.load('./pivot.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); // 將左手座標轉為右手座標 (轉 180 度)
+            geometry.rotateY(Math.PI); 
             // geometry.scale(0.5, 0.5, 0.5);
             pivotStlGeometry = geometry;
-        }, undefined, () => console.log("⚠️ 未找到 pivot.stl，將使用預設圓柱"));
+            checkAndRebuild(); 
+        });
 
-        // 🌟 3. 載入外殼本體 (body.stl)
+        // 3. 載入外殼本體
         stlLoader.load('./body.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); // 將左手座標轉為右手座標 (轉 180 度)
+            geometry.rotateY(Math.PI); 
             // geometry.scale(0.5, 0.5, 0.5);
             bodyStlGeometry = geometry;
-        }, undefined, () => console.log("⚠️ 未找到 body.stl，將使用預設方塊"));
+            checkAndRebuild(); 
+        });
 
+        const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
 
-        // 綁定解鎖按鈕的點擊事件
+        // 🌟 解鎖按鈕點擊事件 (只負責送出，不直接隱藏按鈕，交給 WS 狀態更新)
         const btnArm = document.getElementById('btnArm');
         if (btnArm) {
             btnArm.addEventListener('click', () => {
                 ws.send(JSON.stringify({ cmd: "ARM" }));
-                btnArm.style.display = 'none'; 
+                btnArm.innerText = "⏳ 解鎖處理中...";
             });
         }
 
-        // 🌟 綁定底座四向旋轉下拉選單
+        // 🌟 綁定底座四向旋轉
         const baseRotationSelect = document.getElementById('baseRotationSelect');
         if (baseRotationSelect) {
             baseRotationSelect.addEventListener('change', (e) => {
                 baseOffsetAngle = parseInt(e.target.value) * (Math.PI / 180);
-                if (modules[1]) {
-                    // 立刻改變第一顆模組的初始角度，上面所有的子模組都會跟著公轉！
-                    modules[1].rotation.y = baseOffsetAngle; 
-                }
+                if (modules[1]) modules[1].rotation.y = baseOffsetAngle; 
             });
         }
 
@@ -149,7 +165,7 @@
             const rotatorGroup = new THREE.Group(); 
             baseGroup.add(rotatorGroup);
 
-            // 🔧 建立轉軸 (Pivot)：固定在 baseGroup，不跟著自轉！
+            // 轉軸 (Pivot)
             let pivotMesh;
             const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
             if (pivotStlGeometry) {
@@ -159,9 +175,9 @@
                 pivotMesh = new THREE.Mesh(pivotGeo, pivotMat);
                 pivotMesh.position.y = PIVOT_HEIGHT / 2; 
             }
-            baseGroup.add(pivotMesh); // 👉 加到 baseGroup
+            baseGroup.add(pivotMesh); 
 
-            // 📦 建立外殼本體 (Body)：裝在馬達旋轉軸上，跟著轉！
+            // 外殼本體 (Body)
             let bodyMesh;
             const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
             if (bodyStlGeometry) {
@@ -171,9 +187,14 @@
                 bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
                 bodyMesh.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
             }
-            rotatorGroup.add(bodyMesh); // 👉 加到 rotatorGroup
+            rotatorGroup.add(bodyMesh); 
 
             baseGroup.userData = { id: id, rotator: rotatorGroup };
+            
+            // 🌟 將 ID 綁定在實體模型上，供滑鼠點擊 (Raycaster) 辨識
+            pivotMesh.userData = { id: id };
+            bodyMesh.userData = { id: id };
+
             return baseGroup;
         }
 
@@ -185,7 +206,7 @@
 
             if (!topologyArray || topologyArray.length === 0) return;
 
-            // 🌟 繪製固定底座：優先使用載入的 STL
+            // 繪製固定底座
             const baseMat = new THREE.MeshPhongMaterial({ color: 0xf5c2e7 });
             let baseModule;
             if (baseStlGeometry) {
@@ -197,30 +218,13 @@
                 baseModule.position.y = -5; 
             }
             robotBaseGroup.add(baseModule);
-            
-            // 動態生成控制滑桿介面
-            let controlsHtml = "<strong>🎚️ 網頁端控制：</strong><br><br>";
 
             topologyArray.forEach((node) => {
                 modules[node.id] = createModule(node.id, 0xf9e2af);
-                
-                // 根據拓樸建立對應的 HTML 滑桿
-                controlsHtml += `
-                <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <label style="font-size: 14px;">ID ${node.id}</label>
-                    <input type="range" min="0" max="1000" value="500" id="slider-${node.id}" style="width: 120px; margin: 0 10px;"
-                    oninput="ws.send(JSON.stringify({cmd:'SET_ANGLE', id:${node.id}, angle:parseInt(this.value)}))">
-                </div>`;
             });
-
-            const controlsContainer = document.getElementById('controlsContainer');
-            if (controlsContainer) {
-                controlsContainer.innerHTML = controlsHtml;
-            }
 
             if (modules[1]) {
                 modules[1].position.set(0, 0, 0); 
-                // 🌟 套用目前的底座接頭安裝方向
                 modules[1].rotation.y = baseOffsetAngle; 
                 robotBaseGroup.add(modules[1]);
             }
@@ -232,22 +236,92 @@
                 const parentFace = parentNode.face; 
 
                 if (modules[childId] && modules[parentId]) {
-                    // 🌟 根據你的 C3 程式碼：FACE1 是頂部，FACE0 是側邊
                     if (parentFace === 1) { 
                         modules[childId].position.set(0, TOTAL_HEIGHT, 0);
-                        modules[childId].rotation.set(0, 0, 0); // 頂部繼承方向
+                        modules[childId].rotation.set(0, 0, 0); 
                     } 
                     else if (parentFace === 0) { 
-                        // 側邊在老大的左側 (網頁空間的 -X 方向)
                         modules[childId].position.set(-CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
-                        // 向左倒 90 度
                         modules[childId].rotation.set(0, 0, Math.PI / 2); 
                     }
-                    
                     modules[parentId].userData.rotator.add(modules[childId]);
                 }
             }
         }
+
+        // ==================================================
+        // 🌟 射線點擊與鍵盤控制系統 (霸氣回歸！)
+        // ==================================================
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let selectedNodeId = null;
+
+        renderer.domElement.addEventListener('pointerdown', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(robotBaseGroup.children, true);
+            
+            if (intersects.length > 0) {
+                let object = intersects[0].object;
+                while (object && (!object.userData || !object.userData.id)) {
+                    object = object.parent;
+                }
+                if (object && object.userData && object.userData.id) {
+                    selectModule(object.userData.id);
+                } else {
+                    selectModule(null);
+                }
+            } else {
+                selectModule(null);
+            }
+        });
+
+        function selectModule(id) {
+            if (selectedNodeId && modules[selectedNodeId]) {
+                modules[selectedNodeId].traverse((child) => {
+                    if (child.isMesh && child.material.emissive) child.material.emissive.setHex(0x000000);
+                });
+            }
+            
+            selectedNodeId = id;
+            const infoEl = document.getElementById('selectedInfo');
+            
+            if (id && modules[id]) {
+                modules[id].traverse((child) => {
+                    if (child.isMesh && child.material.emissive) child.material.emissive.setHex(0x333333); // 讓被點到的發光
+                });
+                infoEl.innerText = `當前操控節點: ID ${id}`;
+                infoEl.style.color = "#a6e3a1";
+            } else {
+                infoEl.innerText = "當前操控節點: 無";
+                infoEl.style.color = "#a6adc8";
+            }
+        }
+
+        window.addEventListener('keydown', (event) => {
+            if (!selectedNodeId) return; // 沒選取模型時不動作
+
+            let angle = currentAngles[selectedNodeId] !== undefined ? currentAngles[selectedNodeId] : 500;
+            let changed = false;
+            const STEP = 20; 
+
+            if (['w', 'W', 'd', 'D', 'ArrowRight', 'ArrowUp'].includes(event.key)) {
+                angle += STEP;
+                changed = true;
+            } else if (['a', 'A', 's', 'S', 'ArrowLeft', 'ArrowDown'].includes(event.key)) {
+                angle -= STEP;
+                changed = true;
+            }
+
+            if (changed) {
+                angle = Math.max(0, Math.min(1000, angle));
+                currentAngles[selectedNodeId] = angle; 
+                ws.send(JSON.stringify({cmd: 'SET_ANGLE', id: selectedNodeId, angle: angle}));
+            }
+        });
+        // ==================================================
 
         ws.onopen = () => console.log('連線至伺服器成功');
 
@@ -264,46 +338,53 @@
             const totalCountEl = document.getElementById('totalCount');
             if (totalCountEl) totalCountEl.innerText = data.total || 0;
 
-            // 處理 UI 介面（解鎖按鈕與滑桿）的顯示與隱藏
+            // 🌟 修正：按鈕永遠在那，根據狀態改變顏色跟文字
             const btnArmEl = document.getElementById('btnArm');
-            const controlsContainerEl = document.getElementById('controlsContainer');
-            
-            if (btnArmEl && controlsContainerEl) {
+            if (btnArmEl) {
                 if (data.status === "READY") {
                     btnArmEl.style.display = 'block';
-                    controlsContainerEl.style.display = 'none';
+                    btnArmEl.innerText = "🔓 網頁解鎖通電";
+                    btnArmEl.style.background = '#a6e3a1';
+                    btnArmEl.disabled = false;
+                    btnArmEl.style.cursor = 'pointer';
                 } else if (data.status === "WORKING") {
-                    btnArmEl.style.display = 'none';
-                    controlsContainerEl.style.display = 'block';
+                    btnArmEl.style.display = 'block';
+                    btnArmEl.innerText = "✅ 系統已解鎖 / 允許操控";
+                    btnArmEl.style.background = '#89b4fa';
+                    btnArmEl.disabled = true;
+                    btnArmEl.style.cursor = 'not-allowed';
+                } else if (data.status === "HOMING") {
+                    btnArmEl.style.display = 'block';
+                    btnArmEl.innerText = "🧘 歸零中...";
+                    btnArmEl.style.background = '#f9e2af';
+                    btnArmEl.disabled = true;
                 } else {
                     btnArmEl.style.display = 'none';
-                    controlsContainerEl.style.display = 'none';
                 }
             }
 
             if (data.status === "READY" || data.status === "WORKING" || data.status === "HOMING") {
-                const newTopoStr = data.topology.map(n => `${n.id}-${n.face}`).join('|');
+                latestTopology = data.topology || [];
+                const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
                 
                 if (newTopoStr !== currentTopologyStr) {
-                    rebuildTopology(data.topology);
+                    rebuildTopology(latestTopology);
                     currentTopologyStr = newTopoStr;
+                    // 如果重建拓樸後，發現選取的節點不見了，就解除選取
+                    if (selectedNodeId && !latestTopology.find(n => n.id === selectedNodeId)) {
+                        selectModule(null);
+                    }
                 }
 
                 let angleHtmlStr = "";
                 
-                data.topology.forEach((node) => {
+                latestTopology.forEach((node) => {
                     if (modules[node.id] && node.angle !== undefined) {
-                        // 更新 3D 模型旋轉
+                        currentAngles[node.id] = node.angle; // 記下最新角度供鍵盤使用
+
                         const angleRad = (node.angle - 500) * (240 / 1000) * (Math.PI / 180);
                         modules[node.id].userData.rotator.rotation.y = angleRad;
                         
-                        // 雙向同步：檢查實體滑桿是否正被拖曳，若無則更新其數值
-                        const slider = document.getElementById(`slider-${node.id}`);
-                        if (slider && document.activeElement !== slider) {
-                            slider.value = node.angle;
-                        }
-
-                        // 產生角度資訊文字
                         const realAngle = ((node.angle - 500) * (240 / 1000)).toFixed(1);
                         const sign = realAngle >= 0 ? "+" : ""; 
                         angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${sign}${realAngle}°</span><br>`;
@@ -315,8 +396,10 @@
 
             } else {
                 if (currentTopologyStr !== "") {
+                    latestTopology = [];
                     rebuildTopology([]); 
                     currentTopologyStr = "";
+                    selectModule(null);
                     const angleListDataEl = document.getElementById('angleListData');
                     if (angleListDataEl) angleListDataEl.innerHTML = "等待數據...";
                 }
