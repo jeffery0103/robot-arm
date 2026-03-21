@@ -23,6 +23,7 @@
         <h2 style="margin-top: 0;"> 3D 數位監控</h2>
         <div id="statusBadge" class="status-badge status-OFFLINE">等待連線...</div>
         <div>系統總節點數: <span id="totalCount">0</span></div>
+        <div style="margin-top: 5px;">控制模式: <span id="modeDisplay" style="color:#a6e3a1; font-weight:bold;">🌐 網頁主控</span></div>
         <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
         
         <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%; transition: 0.3s;">🔓 網頁解鎖通電</button>
@@ -53,7 +54,8 @@
             <strong>主控端操作指南：</strong><br>
             1. 滑鼠左鍵點擊模型選取關節<br>
             2. 使用 <span class="kbd-key">W</span> <span class="kbd-key">D</span> / <span class="kbd-key">↑</span> <span class="kbd-key">→</span> 正轉<br>
-            3. 使用 <span class="kbd-key">A</span> <span class="kbd-key">S</span> / <span class="kbd-key">↓</span> <span class="kbd-key">←</span> 反轉
+            3. 使用 <span class="kbd-key">A</span> <span class="kbd-key">S</span> / <span class="kbd-key">↓</span> <span class="kbd-key">←</span> 反轉<br>
+            4. 按 <span class="kbd-key">N</span> 切換網頁/實體遙控模式
         </div>
     </div>
     <div id="canvas-container"></div>
@@ -120,7 +122,6 @@
             geometry.computeVertexNormals();
             geometry.rotateY(Math.PI / 2); 
             geometry.scale(0.5, 0.5, 0.5); 
-
             geometry.computeBoundingBox();
             baseHeightOffset = -geometry.boundingBox.min.y; 
 
@@ -130,7 +131,6 @@
             
             addBlackEdges(baseMesh); 
             globalBaseGroup.add(baseMesh);
-
             modulesGroup.position.y = baseHeightOffset; 
             checkAndRebuild();
         });
@@ -156,7 +156,6 @@
         let serverAngles = {}; 
         let lastWsMsgTime = 0; 
 
-        // 🌟 網頁看門狗
         setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
                 if (Date.now() - lastWsMsgTime > 2000) {
@@ -165,7 +164,6 @@
             }
         }, 1000);
 
-        // 🌟 集中管理 UI 狀態
         function updateSystemUI(state, data = null) {
             const badge = document.getElementById('statusBadge');
             const btnArmEl = document.getElementById('btnArm');
@@ -234,7 +232,6 @@
         }
 
         ws.onopen = () => {
-            console.log('連線至伺服器成功');
             updateSystemUI("SERVER_ONLY");
             ws.send(JSON.stringify({cmd: 'STATUS'}));
         };
@@ -246,6 +243,18 @@
             if (data.total !== undefined) {
                 const totalCountEl = document.getElementById('totalCount');
                 if (totalCountEl) totalCountEl.innerText = data.total;
+            }
+            
+            // 🌟 解析並顯示當前控制模式
+            if (data.mode !== undefined) {
+                const modeDisplay = document.getElementById('modeDisplay');
+                if (data.mode === "WEB") {
+                    modeDisplay.innerText = "🌐 網頁主控";
+                    modeDisplay.style.color = "#a6e3a1";
+                } else if (data.mode === "REMOTE") {
+                    modeDisplay.innerText = "🎮 實體遙控器";
+                    modeDisplay.style.color = "#fab387";
+                }
             }
 
             updateSystemUI("ONLINE", data);
@@ -374,7 +383,6 @@
         let selectedNodeId = null;
 
         renderer.domElement.addEventListener('pointerdown', (event) => {
-            // 防止觸控螢幕滑動時誤觸
             if(event.pointerType === 'touch') return; 
 
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -423,6 +431,12 @@
         }
 
         window.addEventListener('keydown', (event) => {
+            // 🌟 模式切換按鍵捕捉
+            if (event.key === 'n' || event.key === 'N') {
+                ws.send(JSON.stringify({cmd: 'TOGGLE_MODE'}));
+                return;
+            }
+
             if (!selectedNodeId || event.repeat) return; 
             
             let dir = 0;
@@ -445,7 +459,6 @@
             requestAnimationFrame(animate);
             controls.update(); 
             
-            // 讀取 S3 認證的真實狀態，並平滑地滑動過去
             for (let id in serverAngles) {
                 if (modules[id]) {
                     const targetRad = (serverAngles[id] - 500) * (240 / 1000) * (Math.PI / 180);
