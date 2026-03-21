@@ -42,7 +42,7 @@
         </div>
 
         <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; font-weight: bold; font-size: 15px;">
-            <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 無</div>
+            <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 預設底座 (ID 0)</div>
         </div>
 
         <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
@@ -52,9 +52,9 @@
 
         <div class="hint">
             <strong>主控端操作指南：</strong><br>
-            1. 滑鼠左鍵點擊模型選取關節<br>
-            2. 使用 <span class="kbd-key">W</span> <span class="kbd-key">D</span> / <span class="kbd-key">↑</span> <span class="kbd-key">→</span> 正轉<br>
-            3. 使用 <span class="kbd-key">A</span> <span class="kbd-key">S</span> / <span class="kbd-key">↓</span> <span class="kbd-key">←</span> 反轉<br>
+            1. 使用 <span class="kbd-key">↑</span> <span class="kbd-key">↓</span> 切換當前選取的模組<br>
+            2. 使用 <span class="kbd-key">→</span> 正轉，<span class="kbd-key">←</span> 反轉 (長按)<br>
+            3. 也可直接點擊模型選取關節<br>
             4. 按 <span class="kbd-key">N</span> 切換網頁/實體遙控模式
         </div>
     </div>
@@ -156,8 +156,8 @@
         let serverAngles = {}; 
         let lastWsMsgTime = 0; 
         
-        // 🌟 新增：追蹤當前的控制模式
         let currentMode = "WEB"; 
+        let selectedNodeId = 0; // 🌟 預設選中 ID 0 (底座)
 
         setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -248,21 +248,20 @@
                 if (totalCountEl) totalCountEl.innerText = data.total;
             }
             
-            // 🌟 解析並顯示當前控制模式，同時處理防呆邏輯
             if (data.mode !== undefined) {
-                currentMode = data.mode; // 更新全域變數
+                currentMode = data.mode; 
                 const modeDisplay = document.getElementById('modeDisplay');
                 if (data.mode === "WEB") {
                     modeDisplay.innerText = "🌐 網頁主控";
                     modeDisplay.style.color = "#a6e3a1";
+                    
+                    // 從實體切回網頁時，預設選取底座
+                    if (selectedNodeId === null) selectModule(0); 
                 } else if (data.mode === "REMOTE") {
                     modeDisplay.innerText = "🎮 實體遙控器";
                     modeDisplay.style.color = "#fab387";
                     
-                    // 🌟 若切換到實體遙控模式，強制移除選取狀態與發光
-                    if (selectedNodeId !== null) {
-                        selectModule(null);
-                    }
+                    if (selectedNodeId !== null) selectModule(null);
                 }
             }
 
@@ -275,8 +274,9 @@
                 if (newTopoStr !== currentTopologyStr) {
                     rebuildTopology(latestTopology);
                     currentTopologyStr = newTopoStr;
-                    if (selectedNodeId && !latestTopology.find(n => n.id === selectedNodeId)) {
-                        selectModule(null);
+                    // 當拓樸改變時，確認當前選中的 ID 是否還活著
+                    if (selectedNodeId !== null && selectedNodeId !== 0 && !latestTopology.find(n => n.id === selectedNodeId)) {
+                        selectModule(0); // 死掉就退回底座
                     }
                 }
 
@@ -343,9 +343,10 @@
             addBlackEdges(bodyMesh); 
             rotatorGroup.add(bodyMesh); 
 
+            // 🌟 記錄零件類型，方便我們變色時區分
             baseGroup.userData = { id: id, rotator: rotatorGroup };
-            pivotMesh.userData = { id: id };
-            bodyMesh.userData = { id: id };
+            pivotMesh.userData = { id: id, type: 'pivot' };
+            bodyMesh.userData = { id: id, type: 'body' };
 
             return baseGroup;
         }
@@ -385,16 +386,17 @@
                     modules[parentId].userData.rotator.add(modules[childId]);
                 }
             }
+
+            // 重建完成後，套用當前的顏色選取狀態
+            selectModule(selectedNodeId);
         }
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
-        let selectedNodeId = null;
 
         renderer.domElement.addEventListener('pointerdown', (event) => {
             if(event.pointerType === 'touch') return; 
 
-            // 🌟 阻擋機制：實體遙控模式下，完全禁止滑鼠選取節點！
             if (currentMode === "REMOTE") {
                 selectModule(null);
                 return;
@@ -414,48 +416,86 @@
                 if (object && object.userData && object.userData.id) {
                     selectModule(object.userData.id);
                 } else {
-                    selectModule(null);
+                    selectModule(0); // 點到無法辨識的東西，預設回底座
                 }
             } else {
-                selectModule(null);
+                selectModule(0); // 點擊空白處，預設回底座
             }
         });
 
+        // 🌟 終極直接變色函式
         function selectModule(id) {
-            modulesGroup.traverse((child) => {
-                if (child.isMesh && child.material && child.material.emissive) {
-                    child.material.emissive.setHex(0x000000);
-                }
-            });
+            // 1. 先把所有馬達洗回預設顏色 (本體黃色 0xf9e2af，轉軸灰色 0xa6adc8)
+            for (let mid in modules) {
+                modules[mid].traverse((child) => {
+                    if (child.isMesh && child.userData) {
+                        if (child.userData.type === 'pivot') child.material.color.setHex(0xa6adc8);
+                        if (child.userData.type === 'body') child.material.color.setHex(0xf9e2af);
+                    }
+                });
+            }
             
             selectedNodeId = id;
             const infoEl = document.getElementById('selectedInfo');
             
-            if (id && modules[id]) {
+            // 2. 如果選中的是 1~Max 的馬達，直接把整顆漆成「科技藍 (0x89b4fa)」
+            if (id !== null && id > 0 && modules[id]) {
                 modules[id].traverse((child) => {
-                    if (child.isMesh && child.userData && child.userData.id === id && child.material.emissive) {
-                        child.material.emissive.setHex(0x333333); 
+                    if (child.isMesh && child.userData && (child.userData.type === 'pivot' || child.userData.type === 'body')) {
+                        child.material.color.setHex(0x89b4fa); 
                     }
                 });
                 infoEl.innerText = `當前操控節點: ID ${id}`;
-                infoEl.style.color = "#a6e3a1";
-            } else {
+                infoEl.style.color = "#89b4fa"; // 文字也跟著變藍色！
+            } 
+            // 3. 如果選中的是底座 0，不變色
+            else if (id === 0) {
+                infoEl.innerText = "當前操控節點: 預設底座 (ID 0)";
+                infoEl.style.color = "#a6adc8";
+            } 
+            // 4. 遙控模式下的「無」
+            else {
                 infoEl.innerText = "當前操控節點: 無";
                 infoEl.style.color = "#a6adc8";
             }
         }
 
+        // ==========================================
+        // 🌟 十字鍵智慧控制邏輯 (移除 WASD)
+        // ==========================================
         window.addEventListener('keydown', (event) => {
+            // N 鍵切換模式
             if (event.key === 'n' || event.key === 'N') {
                 ws.send(JSON.stringify({cmd: 'TOGGLE_MODE'}));
                 return;
             }
 
-            if (!selectedNodeId || event.repeat) return; 
+            // 阻擋系統連發機制，避免過載
+            if (event.repeat) return; 
+
+            // 如果目前是實體遙控器當家，直接鎖死鍵盤操作！
+            if (currentMode === "REMOTE") return; 
+
+            // 🌟 1. 上下鍵：切換模組 ID
+            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                // 因為你的硬體會自動連續分配 ID，所以最大 ID 就等於目前拓樸的陣列長度！
+                let maxId = latestTopology.length; 
+                let currentId = selectedNodeId || 0;
+
+                if (event.key === 'ArrowUp' && currentId < maxId) {
+                    selectModule(currentId + 1); // 往上就是直接 +1，超簡單！
+                } else if (event.key === 'ArrowDown' && currentId > 0) {
+                    selectModule(currentId - 1); // 往下就是直接 -1，完美！
+                }
+                return; // 切換 ID 完畢，不往下執行
+            }
+
+            // 🌟 2. 左右鍵：控制旋轉 (底座 0 不可轉)
+            if (!selectedNodeId || selectedNodeId === 0) return; 
             
             let dir = 0;
-            if (['w', 'W', 'd', 'D', 'ArrowRight', 'ArrowUp'].includes(event.key)) dir = 1;
-            if (['a', 'A', 's', 'S', 'ArrowLeft', 'ArrowDown'].includes(event.key)) dir = -1;
+            if (event.key === 'ArrowRight') dir = 1;  // 右鍵正轉
+            if (event.key === 'ArrowLeft') dir = -1;  // 左鍵反轉
 
             if (dir !== 0) {
                 ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: dir}));
@@ -463,8 +503,11 @@
         });
 
         window.addEventListener('keyup', (event) => {
-            if (!selectedNodeId) return; 
-            if (['w', 'W', 'd', 'D', 'ArrowRight', 'ArrowUp', 'a', 'A', 's', 'S', 'ArrowLeft', 'ArrowDown'].includes(event.key)) {
+            if (currentMode === "REMOTE") return;
+            if (!selectedNodeId || selectedNodeId === 0) return; 
+
+            // 只有放開左右鍵時才發送停止指令
+            if (['ArrowRight', 'ArrowLeft'].includes(event.key)) {
                 ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: 0})); 
             }
         });
