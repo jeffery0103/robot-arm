@@ -220,7 +220,7 @@
         }
 
         function rebuildTopology(topologyArray) {
-            // 🌟 清空馬達，底座永遠留著！
+            // 🌟 清空馬達，底座永遠留著
             while(modulesGroup.children.length > 0) {
                 modulesGroup.remove(modulesGroup.children[0]);
             }
@@ -233,6 +233,9 @@
             });
 
             if (modules[1]) {
+                // 💡 針對第一顆馬達與底座的接合：
+                // 如果你發現第一顆馬達像截圖一樣「浮在底座上」有一點縫隙
+                // 可以把這裡的 Y 稍微下沉，例如改成 modules[1].position.set(0, -2.5, 0); 依實體微調！
                 modules[1].position.set(0, 0, 0); 
                 modulesGroup.add(modules[1]);
             }
@@ -245,24 +248,16 @@
 
                 if (modules[childId] && modules[parentId]) {
                     
-                    // 🌟 修正 1：根據你的硬體實際回傳，0 是頂部，1 是側邊！
                     if (parentFace === 0) { 
-                        // 👉 這是頂部 (Top)
-                        // 🌟 修正 2：位移剛好是「一個本體的高度 (CUBE_SIZE)」，讓 5mm 轉軸完美陷入洞裡
-                        modules[childId].position.set(0, CUBE_SIZE, 0);
+                        // 👉 插在頂部 (Face 0)
+                        // 絕對精準算式：(49 + 40) * 0.5 = 44.5
+                        modules[childId].position.set(0, 44.5, 0);
                         modules[childId].rotation.set(0, 0, 0); 
                     } 
                     else if (parentFace === 1) { 
-                        // 👉 這是側邊 (Side)
-                        // 🌟 修正 3：X 軸往內縮一個轉軸的深度 (-15 + 5 = -10)，完美貼合！
-                        const insertX = -(CUBE_SIZE / 2) + PIVOT_HEIGHT; 
-                        
-                        // 💡 終極微調：側邊洞口的垂直高度 (Y)
-                        // 預設是在積木正中間：PIVOT_HEIGHT + (CUBE_SIZE / 2) = 5 + 15 = 20
-                        // 如果你發現側邊積木「偏高或偏低」，可以加大或縮小後面這個 20 的數值喔！
-                        const insertY = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
-                        
-                        modules[childId].position.set(insertX, insertY, 0);
+                        // 👉 插在側邊 (Face 1)
+                        // 絕對精準算式：X 往左偏 40*0.5，Y 對齊中心 49*0.5
+                        modules[childId].position.set(-20.0, 24.5, 0);
                         modules[childId].rotation.set(0, 0, Math.PI / 2); 
                     }
                     modules[parentId].userData.rotator.add(modules[childId]);
