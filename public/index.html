@@ -89,13 +89,14 @@
         // ==========================================
         // 🌟 3D 群組架構重構 (底座永不消失！)
         // ==========================================
-        const globalBaseGroup = new THREE.Group(); // 負責管理整個底座與整體旋轉
+        const globalBaseGroup = new THREE.Group(); 
         scene.add(globalBaseGroup);
 
-        const modulesGroup = new THREE.Group(); // 負責管理所有會動的馬達積木
-        globalBaseGroup.add(modulesGroup); // 馬達長在底座上，跟著底座轉！
+        const modulesGroup = new THREE.Group(); 
+        globalBaseGroup.add(modulesGroup); 
 
-        // 🌟 積木連接點的間距常數 (如果 STL 縮放後發生穿模，請修改這裡的數值)
+        // 🌟 積木連接點的間距常數 (如果 STL 縮放 0.5 後有穿模，請修改這兩個數字)
+        // 假設原圖外殼高度 60，縮小 0.5 變 30；轉軸原圖 10，縮小變 5。
         const CUBE_SIZE = 30; 
         const PIVOT_HEIGHT = 5; 
         const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; 
@@ -104,16 +105,15 @@
         let currentTopologyStr = ""; 
         let latestTopology = []; 
         let currentAngles = {};  
-        let baseHeightOffset = 0; // 記錄底座的物理高度
+        let baseHeightOffset = 0; 
 
         let baseStlGeometry = null;
         let pivotStlGeometry = null;
         let bodyStlGeometry = null;
         const stlLoader = new THREE.STLLoader();
 
-        // 🌟 新增：邊線生成輔助函式
+        // 🌟 邊線生成輔助函式
         function addBlackEdges(mesh) {
-            // 第二個參數 30 代表相鄰面夾角超過 30 度才畫線
             const edges = new THREE.EdgesGeometry(mesh.geometry, 30);
             const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1 });
             const lineSegments = new THREE.LineSegments(edges, lineMat);
@@ -124,11 +124,11 @@
             if (latestTopology.length > 0) rebuildTopology(latestTopology);
         }
 
-        // 🌟 1. 載入底座：自動計算高度貼齊網格
+        // 🌟 1. 載入底座
         stlLoader.load('./base.stl', function (geometry) {
             geometry.computeVertexNormals();
             geometry.rotateY(Math.PI / 2); 
-            geometry.scale(0.1, 0.1, 0.1); // 縮小 10 倍
+            geometry.scale(0.5, 0.5, 0.5); // 🌟 改為 0.5 倍
 
             // 計算邊界框，把底部推到 y=0
             geometry.computeBoundingBox();
@@ -136,13 +136,12 @@
 
             const baseMat = new THREE.MeshPhongMaterial({ color: 0xf5c2e7 });
             const baseMesh = new THREE.Mesh(geometry, baseMat);
-            baseMesh.position.y = baseHeightOffset; // 向上推，讓底部貼齊網格
+            baseMesh.position.y = baseHeightOffset; 
             
-            addBlackEdges(baseMesh); // 為底座加上黑色邊線
-            
+            addBlackEdges(baseMesh); 
             globalBaseGroup.add(baseMesh);
 
-            // ⚠️ 關鍵：馬達的起點也要跟著往上推，才會剛好插在底座的轉軸上！
+            // 馬達的起點跟著往上推
             modulesGroup.position.y = baseHeightOffset; 
             
             checkAndRebuild();
@@ -151,8 +150,8 @@
         // 🌟 2. 載入轉軸
         stlLoader.load('./pivot.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateX(Math.PI); // 翻跟斗解決上下顛倒
-            geometry.scale(0.1, 0.1, 0.1); 
+            geometry.rotateY(Math.PI); // 🌟 改回轉 Y 軸，不翻跟斗了！
+            geometry.scale(0.5, 0.5, 0.5); // 🌟 改為 0.5 倍
             pivotStlGeometry = geometry;
             checkAndRebuild(); 
         });
@@ -160,8 +159,8 @@
         // 🌟 3. 載入外殼本體
         stlLoader.load('./body.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateX(Math.PI); // 如果外殼也顛倒，這行會把它翻正
-            geometry.scale(0.1, 0.1, 0.1); 
+            geometry.rotateY(Math.PI); // 🌟 改回轉 Y 軸
+            geometry.scale(0.5, 0.5, 0.5); // 🌟 改為 0.5 倍
             bodyStlGeometry = geometry;
             checkAndRebuild(); 
         });
@@ -178,7 +177,6 @@
         const baseRotationSelect = document.getElementById('baseRotationSelect');
         if (baseRotationSelect) {
             baseRotationSelect.addEventListener('change', (e) => {
-                // 轉動整個底座群組，上面的馬達會完美跟著公轉！
                 globalBaseGroup.rotation.y = parseInt(e.target.value) * (Math.PI / 180);
             });
         }
@@ -198,7 +196,7 @@
                 pivotMesh.position.y = PIVOT_HEIGHT / 2; 
             }
             
-            addBlackEdges(pivotMesh); // 為轉軸加上黑色邊線
+            addBlackEdges(pivotMesh); 
             baseGroup.add(pivotMesh); 
 
             let bodyMesh;
@@ -211,7 +209,7 @@
                 bodyMesh.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
             }
             
-            addBlackEdges(bodyMesh); // 為外殼本體加上黑色邊線
+            addBlackEdges(bodyMesh); 
             rotatorGroup.add(bodyMesh); 
 
             baseGroup.userData = { id: id, rotator: rotatorGroup };
@@ -222,7 +220,6 @@
         }
 
         function rebuildTopology(topologyArray) {
-            // 🌟 現在只清空馬達，底座永遠留著！
             while(modulesGroup.children.length > 0) {
                 modulesGroup.remove(modulesGroup.children[0]);
             }
@@ -259,9 +256,6 @@
             }
         }
 
-        // ==================================================
-        // 🌟 射線點擊與鍵盤控制系統
-        // ==================================================
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         let selectedNodeId = null;
@@ -271,7 +265,6 @@
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
 
-            // 改為掃描 modulesGroup 裡面的馬達
             const intersects = raycaster.intersectObjects(modulesGroup.children, true);
             
             if (intersects.length > 0) {
