@@ -113,29 +113,32 @@
             if (latestTopology.length > 0) rebuildTopology(latestTopology);
         }
 
-        // 1. 載入底座
+        // 🌟 1. 載入底座 (base.stl)
         stlLoader.load('./base.stl', function (geometry) {
             geometry.computeVertexNormals();
             geometry.rotateY(Math.PI / 2); 
-            // geometry.scale(0.5, 0.5, 0.5); // 如果太大可以解開這行縮放
+            geometry.scale(0.1, 0.1, 0.1); // 🌟 縮小 10 倍 (視情況可改 0.05 或 0.2)
             baseStlGeometry = geometry;
-            checkAndRebuild(); // 下載完畢，強制重畫！
+            checkAndRebuild();
         });
 
-        // 2. 載入轉軸
+        // 🌟 2. 載入轉軸 (pivot.stl)
         stlLoader.load('./pivot.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); 
-            // geometry.scale(0.5, 0.5, 0.5);
+            // 🌟 解決上下顛倒：讓它繞著 X 軸翻跟斗 180 度！
+            geometry.rotateX(Math.PI); 
+            // 如果轉完發現左右或前後反了，再解開下面這行
+            // geometry.rotateY(Math.PI); 
+            geometry.scale(0.1, 0.1, 0.1); // 🌟 同步縮小 10 倍
             pivotStlGeometry = geometry;
             checkAndRebuild(); 
         });
 
-        // 3. 載入外殼本體
+        // 🌟 3. 載入外殼本體 (body.stl)
         stlLoader.load('./body.stl', function (geometry) {
             geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); 
-            // geometry.scale(0.5, 0.5, 0.5);
+            // geometry.rotateX(Math.PI); // 外殼如果也顛倒，把這行解開
+            geometry.scale(0.1, 0.1, 0.1); // 🌟 同步縮小 10 倍
             bodyStlGeometry = geometry;
             checkAndRebuild(); 
         });
