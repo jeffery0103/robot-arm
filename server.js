@@ -54,7 +54,7 @@ wss.on('connection', (ws) => {
 });
 
 // Render 會自動分配 PORT，我們在本地端測試時預設用 3000
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 伺服器順利啟動在 Port ${PORT} 囉！`);
 });
