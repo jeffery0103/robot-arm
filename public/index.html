@@ -14,6 +14,9 @@
         .status-OFFLINE { background: #6c7086; color: #111; }
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; }
+        
+        /* 讓下拉選單跟按鈕可以被滑鼠點擊 */
+        #btnArm, #baseRotationSelect { pointer-events: auto; }
     </style>
 </head>
 <body>
@@ -25,6 +28,19 @@
         
         <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%;">🔓 網頁解鎖通電</button>
         
+        <div id="baseSettings" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
+            <strong>⚙️ 實體底座設定：</strong>
+            <div style="margin-top: 8px; font-size: 14px; display: flex; align-items: center; justify-content: space-between;">
+                <label>方形接頭方向</label>
+                <select id="baseRotationSelect" style="background: #313244; color: #a6e3a1; border: 1px solid #585b70; border-radius: 4px; padding: 4px; font-weight: bold; cursor: pointer;">
+                    <option value="0">0° (預設: X朝前)</option>
+                    <option value="90">90° (逆時針轉)</option>
+                    <option value="180">180° (轉向後方)</option>
+                    <option value="-90">270° (順時針轉)</option>
+                </select>
+            </div>
+        </div>
+
         <div id="controlsContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; display: none;"></div>
 
         <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
@@ -38,6 +54,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
 
     <script>
         const container = document.getElementById('canvas-container');
@@ -74,6 +91,38 @@
         let currentTopologyStr = ""; 
         const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
 
+        // 🌟 STL 模型存放變數
+        let baseStlGeometry = null;
+        let pivotStlGeometry = null;
+        let bodyStlGeometry = null;
+        let baseOffsetAngle = 0; // 記錄底座的旋轉角度
+        const stlLoader = new THREE.STLLoader();
+
+        // 🌟 1. 載入底座 (base.stl)
+        stlLoader.load('./base.stl', function (geometry) {
+            geometry.computeVertexNormals();
+            geometry.rotateY(Math.PI / 2); // 將 SW 的 (X朝前,Z朝右) 轉換為網頁座標系 (-Z朝前,+X朝右)
+            // geometry.scale(0.5, 0.5, 0.5); // 如果載入太大，可以解開這行調整縮放比例
+            baseStlGeometry = geometry;
+        }, undefined, () => console.log("⚠️ 未找到 base.stl，將使用預設圓柱"));
+
+        // 🌟 2. 載入轉軸 (pivot.stl)
+        stlLoader.load('./pivot.stl', function (geometry) {
+            geometry.computeVertexNormals();
+            geometry.rotateY(Math.PI); // 將左手座標轉為右手座標 (轉 180 度)
+            // geometry.scale(0.5, 0.5, 0.5);
+            pivotStlGeometry = geometry;
+        }, undefined, () => console.log("⚠️ 未找到 pivot.stl，將使用預設圓柱"));
+
+        // 🌟 3. 載入外殼本體 (body.stl)
+        stlLoader.load('./body.stl', function (geometry) {
+            geometry.computeVertexNormals();
+            geometry.rotateY(Math.PI); // 將左手座標轉為右手座標 (轉 180 度)
+            // geometry.scale(0.5, 0.5, 0.5);
+            bodyStlGeometry = geometry;
+        }, undefined, () => console.log("⚠️ 未找到 body.stl，將使用預設方塊"));
+
+
         // 綁定解鎖按鈕的點擊事件
         const btnArm = document.getElementById('btnArm');
         if (btnArm) {
@@ -83,29 +132,46 @@
             });
         }
 
+        // 🌟 綁定底座四向旋轉下拉選單
+        const baseRotationSelect = document.getElementById('baseRotationSelect');
+        if (baseRotationSelect) {
+            baseRotationSelect.addEventListener('change', (e) => {
+                baseOffsetAngle = parseInt(e.target.value) * (Math.PI / 180);
+                if (modules[1]) {
+                    // 立刻改變第一顆模組的初始角度，上面所有的子模組都會跟著公轉！
+                    modules[1].rotation.y = baseOffsetAngle; 
+                }
+            });
+        }
+
         function createModule(id, colorHex) {
             const baseGroup = new THREE.Group(); 
             const rotatorGroup = new THREE.Group(); 
-            
             baseGroup.add(rotatorGroup);
 
-            const pivotGeo = new THREE.CylinderGeometry(13, 13, PIVOT_HEIGHT, 32);
+            // 🔧 建立轉軸 (Pivot)：固定在 baseGroup，不跟著自轉！
+            let pivotMesh;
             const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
-            const pivot = new THREE.Mesh(pivotGeo, pivotMat);
-            pivot.position.y = PIVOT_HEIGHT / 2; 
-            rotatorGroup.add(pivot); 
+            if (pivotStlGeometry) {
+                pivotMesh = new THREE.Mesh(pivotStlGeometry, pivotMat);
+            } else {
+                const pivotGeo = new THREE.CylinderGeometry(13, 13, PIVOT_HEIGHT, 32);
+                pivotMesh = new THREE.Mesh(pivotGeo, pivotMat);
+                pivotMesh.position.y = PIVOT_HEIGHT / 2; 
+            }
+            baseGroup.add(pivotMesh); // 👉 加到 baseGroup
 
-            const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+            // 📦 建立外殼本體 (Body)：裝在馬達旋轉軸上，跟著轉！
+            let bodyMesh;
             const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex });
-            const body = new THREE.Mesh(bodyGeo, bodyMat);
-            body.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
-            rotatorGroup.add(body); 
-
-            const indicatorGeo = new THREE.SphereGeometry(3, 16, 16);
-            const indicatorMat = new THREE.MeshBasicMaterial({ color: 0xf38ba8 });
-            const indicator = new THREE.Mesh(indicatorGeo, indicatorMat);
-            indicator.position.set(0, PIVOT_HEIGHT + (CUBE_SIZE / 2), CUBE_SIZE / 2 + 1); 
-            rotatorGroup.add(indicator); 
+            if (bodyStlGeometry) {
+                bodyMesh = new THREE.Mesh(bodyStlGeometry, bodyMat);
+            } else {
+                const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+                bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+                bodyMesh.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
+            }
+            rotatorGroup.add(bodyMesh); // 👉 加到 rotatorGroup
 
             baseGroup.userData = { id: id, rotator: rotatorGroup };
             return baseGroup;
@@ -119,10 +185,17 @@
 
             if (!topologyArray || topologyArray.length === 0) return;
 
-            const baseGeo = new THREE.CylinderGeometry(35, 35, 10, 32);
+            // 🌟 繪製固定底座：優先使用載入的 STL
             const baseMat = new THREE.MeshPhongMaterial({ color: 0xf5c2e7 });
-            const baseModule = new THREE.Mesh(baseGeo, baseMat);
-            baseModule.position.y = -5; 
+            let baseModule;
+            if (baseStlGeometry) {
+                baseModule = new THREE.Mesh(baseStlGeometry, baseMat);
+                baseModule.position.set(0, 0, 0);
+            } else {
+                const baseGeo = new THREE.CylinderGeometry(35, 35, 10, 32);
+                baseModule = new THREE.Mesh(baseGeo, baseMat);
+                baseModule.position.y = -5; 
+            }
             robotBaseGroup.add(baseModule);
             
             // 動態生成控制滑桿介面
@@ -147,6 +220,8 @@
 
             if (modules[1]) {
                 modules[1].position.set(0, 0, 0); 
+                // 🌟 套用目前的底座接頭安裝方向
+                modules[1].rotation.y = baseOffsetAngle; 
                 robotBaseGroup.add(modules[1]);
             }
 
@@ -157,13 +232,16 @@
                 const parentFace = parentNode.face; 
 
                 if (modules[childId] && modules[parentId]) {
-                    if (parentFace === 0) {
+                    // 🌟 根據你的 C3 程式碼：FACE1 是頂部，FACE0 是側邊
+                    if (parentFace === 1) { 
                         modules[childId].position.set(0, TOTAL_HEIGHT, 0);
-                        modules[childId].rotation.set(0, 0, 0);
+                        modules[childId].rotation.set(0, 0, 0); // 頂部繼承方向
                     } 
-                    else if (parentFace === 1) {
-                        modules[childId].position.set(CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
-                        modules[childId].rotation.set(0, 0, -Math.PI / 2); 
+                    else if (parentFace === 0) { 
+                        // 側邊在老大的左側 (網頁空間的 -X 方向)
+                        modules[childId].position.set(-CUBE_SIZE / 2, PIVOT_HEIGHT + (CUBE_SIZE / 2), 0);
+                        // 向左倒 90 度
+                        modules[childId].rotation.set(0, 0, Math.PI / 2); 
                     }
                     
                     modules[parentId].userData.rotator.add(modules[childId]);
