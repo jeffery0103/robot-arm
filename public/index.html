@@ -131,9 +131,16 @@
         scene.add(gridHelper);
 
         // ==========================================
-        // 🌟 修復當機 Bug：使用預設顏色的輔助線
+        // 透過修改幾何頂點顏色，設定高辨識度輔助線與標籤
         // ==========================================
         const axesHelper = new THREE.AxesHelper(100);
+        const colors = axesHelper.geometry.attributes.color;
+        // X 軸：粉紅色 (#f38ba8)
+        colors.setXYZ(0, 0.95, 0.54, 0.66); colors.setXYZ(1, 0.95, 0.54, 0.66);
+        // Y 軸：淺綠色 (#a6e3a1)
+        colors.setXYZ(2, 0.65, 0.89, 0.63); colors.setXYZ(3, 0.65, 0.89, 0.63);
+        // Z 軸：淺藍色 (#89b4fa)
+        colors.setXYZ(4, 0.54, 0.71, 0.98); colors.setXYZ(5, 0.54, 0.71, 0.98);
         scene.add(axesHelper);
 
         function createAxisLabel(text, position, colorStr) {
@@ -157,11 +164,9 @@
             return sprite;
         }
 
-        // 使用紅(X)、綠(Y)、藍(Z)作為對應顏色
-        scene.add(createAxisLabel('+X', new THREE.Vector3(110, 0, 0), '#ff0000'));
-        scene.add(createAxisLabel('+Y', new THREE.Vector3(0, 110, 0), '#00ff00'));
-        scene.add(createAxisLabel('+Z', new THREE.Vector3(0, 0, 110), '#0000ff'));
-        // ==========================================
+        scene.add(createAxisLabel('+X', new THREE.Vector3(110, 0, 0), '#f38ba8'));
+        scene.add(createAxisLabel('+Y', new THREE.Vector3(0, 110, 0), '#a6e3a1'));
+        scene.add(createAxisLabel('+Z', new THREE.Vector3(0, 0, 110), '#89b4fa'));
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(120, 100, 180); 
@@ -340,12 +345,11 @@
             lastWsMsgTime = Date.now(); 
             let data;
             
-            // 🌟 終極防禦：避免 JSON 壞檔讓整個網頁癱瘓
             try {
                 data = JSON.parse(event.data);
             } catch (err) {
                 console.error("⚠️ 忽略無效封包:", event.data);
-                return; // 直接跳過，不讓網頁當機！
+                return;
             }
             
             if (data.total !== undefined) {
@@ -433,7 +437,7 @@
             baseGroup.add(pivotMesh); 
 
             let bodyMesh;
-            const bodyMat = new MeshPhongMaterial({ color: colorHex });
+            const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex }); // 已修正前綴
             if (bodyStlGeometry) {
                 bodyMesh = new THREE.Mesh(bodyStlGeometry, bodyMat);
             } else {
