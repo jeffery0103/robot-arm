@@ -423,7 +423,7 @@
             }
         });
 
-        // 🌟 終極直接變色函式
+        // 🌟 終極直接變色函式 (修復牽一髮動全身的蟲蟲！)
         function selectModule(id) {
             // 1. 先把所有馬達洗回預設顏色 (本體黃色 0xf9e2af，轉軸灰色 0xa6adc8)
             for (let mid in modules) {
@@ -438,15 +438,16 @@
             selectedNodeId = id;
             const infoEl = document.getElementById('selectedInfo');
             
-            // 2. 如果選中的是 1~Max 的馬達，直接把整顆漆成「科技藍 (0x89b4fa)」
+            // 2. 如果選中的是 1~Max 的馬達，嚴格比對 ID 後再漆成「科技藍 (0x89b4fa)」
             if (id !== null && id > 0 && modules[id]) {
                 modules[id].traverse((child) => {
-                    if (child.isMesh && child.userData && (child.userData.type === 'pivot' || child.userData.type === 'body')) {
+                    // 💡 關鍵防護罩加回來了：必須 child.userData.id === id 才能變色！
+                    if (child.isMesh && child.userData && child.userData.id === id && (child.userData.type === 'pivot' || child.userData.type === 'body')) {
                         child.material.color.setHex(0x89b4fa); 
                     }
                 });
                 infoEl.innerText = `當前操控節點: ID ${id}`;
-                infoEl.style.color = "#89b4fa"; // 文字也跟著變藍色！
+                infoEl.style.color = "#89b4fa"; 
             } 
             // 3. 如果選中的是底座 0，不變色
             else if (id === 0) {
