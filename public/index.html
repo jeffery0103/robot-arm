@@ -15,7 +15,7 @@
         #canvas-container { width: 100vw; height: 100vh; display: block; }
         .hint { font-size: 12px; color: #a6adc8; margin-top: 15px; line-height: 1.5; }
         .kbd-key { background: #45475a; padding: 2px 6px; border-radius: 4px; color: #cdd6f4; font-family: monospace; }
-        #btnArm, #baseRotationSelect, input[type=range] { pointer-events: auto; }
+        #btnArm, #baseRotationSelect { pointer-events: auto; }
     </style>
 </head>
 <body>
@@ -40,8 +40,6 @@
             </div>
         </div>
 
-        <div id="controlsContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; display: none;"></div>
-
         <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; font-weight: bold; font-size: 15px;">
             <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 無</div>
         </div>
@@ -52,7 +50,7 @@
         </div>
 
         <div class="hint">
-            <strong>操作指南：</strong><br>
+            <strong>主控端操作指南：</strong><br>
             1. 滑鼠左鍵點擊模型選取關節<br>
             2. 使用 <span class="kbd-key">W</span> <span class="kbd-key">D</span> / <span class="kbd-key">↑</span> <span class="kbd-key">→</span> 正轉<br>
             3. 使用 <span class="kbd-key">A</span> <span class="kbd-key">S</span> / <span class="kbd-key">↓</span> <span class="kbd-key">←</span> 反轉
@@ -96,7 +94,6 @@
 
         const CUBE_SIZE = 30; 
         const PIVOT_HEIGHT = 5; 
-        const TOTAL_HEIGHT = CUBE_SIZE + PIVOT_HEIGHT; 
 
         let modules = {}; 
         let currentTopologyStr = ""; 
@@ -135,7 +132,6 @@
             globalBaseGroup.add(baseMesh);
 
             modulesGroup.position.y = baseHeightOffset; 
-            
             checkAndRebuild();
         });
 
@@ -173,7 +169,6 @@
         function updateSystemUI(state, data = null) {
             const badge = document.getElementById('statusBadge');
             const btnArmEl = document.getElementById('btnArm');
-            const controlsContainerEl = document.getElementById('controlsContainer');
             const errorMsgEl = document.getElementById('errorMsg');
 
             if (state === "SERVER_ONLY") {
@@ -181,14 +176,12 @@
                 badge.style.background = '#89b4fa';
                 badge.innerText = '🌐 伺服器連線中 (尋找主板...)';
                 if (btnArmEl) btnArmEl.style.display = 'none';
-                if (controlsContainerEl) controlsContainerEl.style.display = 'none';
             } 
             else if (state === "S3_OFFLINE") {
                 badge.className = 'status-badge status-ERROR';
                 badge.style.background = '#f38ba8';
                 badge.innerText = '⚠️ 伺服器已連線，但 S3 主板未上線';
                 if (btnArmEl) btnArmEl.style.display = 'none';
-                if (controlsContainerEl) controlsContainerEl.style.display = 'none';
                 
                 if (currentTopologyStr !== "") {
                     latestTopology = [];
@@ -204,7 +197,6 @@
                 badge.style.background = '';
                 badge.innerText = '❌ 伺服器斷線';
                 if (btnArmEl) btnArmEl.style.display = 'none';
-                if (controlsContainerEl) controlsContainerEl.style.display = 'none';
             } 
             else if (state === "ONLINE" && data) {
                 badge.className = `status-badge status-${data.status}`;
@@ -220,7 +212,6 @@
                         btnArmEl.disabled = false;
                         btnArmEl.style.cursor = 'pointer';
                     }
-                    if (controlsContainerEl) controlsContainerEl.style.display = 'none';
                 } else if (data.status === "WORKING") {
                     if (btnArmEl) {
                         btnArmEl.style.display = 'block';
@@ -229,7 +220,6 @@
                         btnArmEl.disabled = true;
                         btnArmEl.style.cursor = 'not-allowed';
                     }
-                    if (controlsContainerEl) controlsContainerEl.style.display = 'block';
                 } else if (data.status === "HOMING") {
                     if (btnArmEl) {
                         btnArmEl.style.display = 'block';
@@ -237,10 +227,8 @@
                         btnArmEl.style.background = '#f9e2af';
                         btnArmEl.disabled = true;
                     }
-                    if (controlsContainerEl) controlsContainerEl.style.display = 'none';
                 } else {
                     if (btnArmEl) btnArmEl.style.display = 'none';
-                    if (controlsContainerEl) controlsContainerEl.style.display = 'none';
                 }
             }
         }
@@ -279,11 +267,6 @@
                     if (modules[node.id] && node.angle !== undefined) {
                         serverAngles[node.id] = node.angle; 
 
-                        const slider = document.getElementById(`slider-${node.id}`);
-                        if (slider && document.activeElement !== slider) {
-                            slider.value = node.angle;
-                        }
-
                         const realAngle = ((node.angle - 500) * (240 / 1000)).toFixed(1);
                         const sign = realAngle >= 0 ? "+" : ""; 
                         angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${sign}${realAngle}°</span><br>`;
@@ -297,21 +280,6 @@
 
         ws.onclose = () => {
             updateSystemUI("OFFLINE");
-        };
-
-        let sliderTimeout = null;
-        let lastWsSendTime = 0;
-        window.throttledSliderSend = function(id, angle) {
-            const now = Date.now();
-            if (now - lastWsSendTime > 100) {
-                ws.send(JSON.stringify({cmd: 'SET_ANGLE', id: id, angle: angle}));
-                lastWsSendTime = now;
-            } else {
-                clearTimeout(sliderTimeout);
-                sliderTimeout = setTimeout(() => {
-                    ws.send(JSON.stringify({cmd: 'SET_ANGLE', id: id, angle: angle}));
-                }, 100);
-            }
         };
 
         const btnArm = document.getElementById('btnArm');
@@ -372,20 +340,9 @@
 
             if (!topologyArray || topologyArray.length === 0) return;
 
-            let controlsHtml = "<strong>🎚️ 網頁端控制：</strong><br><br>";
-
             topologyArray.forEach((node) => {
                 modules[node.id] = createModule(node.id, 0xf9e2af);
-                controlsHtml += `
-                <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <label style="font-size: 14px;">ID ${node.id}</label>
-                    <input type="range" min="0" max="1000" value="500" id="slider-${node.id}" style="width: 120px; margin: 0 10px;"
-                    oninput="throttledSliderSend(${node.id}, parseInt(this.value))">
-                </div>`;
             });
-
-            const controlsContainer = document.getElementById('controlsContainer');
-            if (controlsContainer) controlsContainer.innerHTML = controlsHtml;
 
             if (modules[1]) {
                 modules[1].position.set(0, 0, 0); 
@@ -417,6 +374,9 @@
         let selectedNodeId = null;
 
         renderer.domElement.addEventListener('pointerdown', (event) => {
+            // 防止觸控螢幕滑動時誤觸
+            if(event.pointerType === 'touch') return; 
+
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
@@ -481,18 +441,14 @@
             }
         });
         
-        // ==========================================
-        // 🌟 就是這裡啦！被你弄丟的平滑插值 (Lerp) 引擎
-        // ==========================================
         function animate() {
             requestAnimationFrame(animate);
             controls.update(); 
             
-            // 讀取 S3 認證的真實狀態，並平滑地滑動過去！
+            // 讀取 S3 認證的真實狀態，並平滑地滑動過去
             for (let id in serverAngles) {
                 if (modules[id]) {
                     const targetRad = (serverAngles[id] - 500) * (240 / 1000) * (Math.PI / 180);
-                    // 每一幀只靠近目標 15%，製造極致絲滑的避震感
                     modules[id].userData.rotator.rotation.y += (targetRad - modules[id].userData.rotator.rotation.y) * 0.15;
                 }
             }
