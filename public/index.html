@@ -130,20 +130,14 @@
         const gridHelper = new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244);
         scene.add(gridHelper);
 
-        // ==========================================
-        // 透過修改幾何頂點顏色，設定高辨識度輔助線與標籤
-        // ==========================================
         const axesHelper = new THREE.AxesHelper(100);
         const colors = axesHelper.geometry.attributes.color;
-        // X 軸：粉紅色 (#f38ba8)
         colors.setXYZ(0, 0.95, 0.54, 0.66); colors.setXYZ(1, 0.95, 0.54, 0.66);
-        // Y 軸：淺綠色 (#a6e3a1)
         colors.setXYZ(2, 0.65, 0.89, 0.63); colors.setXYZ(3, 0.65, 0.89, 0.63);
-        // Z 軸：淺藍色 (#89b4fa)
         colors.setXYZ(4, 0.54, 0.71, 0.98); colors.setXYZ(5, 0.54, 0.71, 0.98);
         scene.add(axesHelper);
 
-        function createAxisLabel(text, position, colorStr) {
+        function createAxisLabel(text, colorStr) {
             const canvas = document.createElement('canvas');
             canvas.width = 128;
             canvas.height = 64;
@@ -159,14 +153,22 @@
             const texture = new THREE.CanvasTexture(canvas);
             const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false }); 
             const sprite = new THREE.Sprite(spriteMat);
-            sprite.position.copy(position);
             sprite.scale.set(20, 10, 1);
             return sprite;
         }
 
-        scene.add(createAxisLabel('+X', new THREE.Vector3(110, 0, 0), '#f38ba8'));
-        scene.add(createAxisLabel('+Y', new THREE.Vector3(0, 110, 0), '#a6e3a1'));
-        scene.add(createAxisLabel('+Z', new THREE.Vector3(0, 0, 110), '#89b4fa'));
+        // 🌟 把標籤存成全域變數，方便我們隨時挪動它們！
+        let labelX = createAxisLabel('+X', '#f38ba8');
+        let labelY = createAxisLabel('+Y', '#a6e3a1');
+        let labelZ = createAxisLabel('+Z', '#89b4fa');
+        
+        labelX.position.set(110, 0, 0);
+        labelY.position.set(0, 110, 0);
+        labelZ.position.set(0, 0, 110);
+        
+        scene.add(labelX);
+        scene.add(labelY);
+        scene.add(labelZ);
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(120, 100, 180); 
@@ -437,7 +439,7 @@
             baseGroup.add(pivotMesh); 
 
             let bodyMesh;
-            const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex }); // 已修正前綴
+            const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex }); 
             if (bodyStlGeometry) {
                 bodyMesh = new THREE.Mesh(bodyStlGeometry, bodyMat);
             } else {
@@ -496,6 +498,16 @@
                 endEffectorMarker.position.set(0, 44.5, 0);
                 modules[lastNodeId].userData.rotator.add(endEffectorMarker);
             }
+
+            // 🌟 魔法降臨：自動適應軸線長度！
+            // 基礎長度是 100，每多一顆馬達就加 50 的長度，再加上 60 的安全距離，保證一定比模型高！
+            let maxAxisLen = Math.max(100, topologyArray.length * 50 + 60); 
+            axesHelper.scale.set(maxAxisLen / 100, maxAxisLen / 100, maxAxisLen / 100);
+            
+            // 把浮空標籤跟著推到最外圍
+            labelX.position.set(maxAxisLen + 10, 0, 0);
+            labelY.position.set(0, maxAxisLen + 10, 0);
+            labelZ.position.set(0, 0, maxAxisLen + 10);
 
             selectModule(selectedNodeId);
         }
