@@ -234,8 +234,8 @@
             baseMesh.position.y = baseHeightOffset; 
             
             addBlackEdges(baseMesh); 
-            globalBaseGroup.add(baseMesh);
-            modulesGroup.position.y = baseHeightOffset; 
+            globalBaseGroup.add(baseMesh); // 底座加入總群組
+            modulesGroup.position.y = baseHeightOffset; // 馬達群組放在底座上方
             checkAndRebuild();
         });
 
@@ -413,10 +413,11 @@
             });
         }
 
+        // 🌟 魔法二：底座下拉選單現在只轉馬達 (modulesGroup)！
         const baseRotationSelect = document.getElementById('baseRotationSelect');
         if (baseRotationSelect) {
             baseRotationSelect.addEventListener('change', (e) => {
-                globalBaseGroup.rotation.y = parseInt(e.target.value) * (Math.PI / 180);
+                modulesGroup.rotation.y = parseInt(e.target.value) * (Math.PI / 180);
             });
         }
 
@@ -498,17 +499,18 @@
                 modules[lastNodeId].userData.rotator.add(endEffectorMarker);
             }
 
-            // 🌟 精確計算：極限高度加上半個模組的距離 (約 22.5) 作為座標軸長度
-            let maxAxisLen = 100;
+            // 🌟 魔法一：只有 Y 軸會跟著疊高，X 軸和 Z 軸維持 100 長度不變！
+            let maxYLen = 100;
             if (topologyArray.length > 0) {
-                maxAxisLen = Math.max(100, topologyArray.length * 44.5 + 22.5); 
+                maxYLen = Math.max(100, topologyArray.length * 44.5 + 22.5); 
             }
-            axesHelper.scale.set(maxAxisLen / 100, maxAxisLen / 100, maxAxisLen / 100);
             
-            // 確保標籤緊貼在軸線末端
-            labelX.position.set(maxAxisLen + 5, 0, 0);
-            labelY.position.set(0, maxAxisLen + 5, 0);
-            labelZ.position.set(0, 0, maxAxisLen + 5);
+            axesHelper.scale.set(1, maxYLen / 100, 1);
+            
+            // X、Z 標籤固定在 110，只有 Y 標籤往上推
+            labelX.position.set(110, 0, 0);
+            labelY.position.set(0, maxYLen + 5, 0);
+            labelZ.position.set(0, 0, 110);
 
             selectModule(selectedNodeId);
         }
