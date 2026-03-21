@@ -89,7 +89,7 @@
             </div>
 
             <div id="endEffectorPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
-                <strong>🎯 末端座標 (相對於底座)：</strong>
+                <strong>🎯 絕對空間座標 (0,0,0 為準)：</strong>
                 <div id="xyzDisplay" style="margin-top: 5px; font-family: monospace; font-size: 15px; color: #f9e2af; font-weight: bold; line-height: 1.6;">
                     X: 0.0 <br>
                     Y: 0.0 <br>
@@ -105,7 +105,6 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
 
     <script>
-        // 面板折疊控制邏輯
         const uiContent = document.getElementById('ui-content');
         const toggleIcon = document.getElementById('toggleIcon');
         let isUICollapsed = window.innerWidth <= 768; 
@@ -131,6 +130,42 @@
         const gridHelper = new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244);
         scene.add(gridHelper);
 
+        // ==========================================
+        // 🌟 新增：XYZ 三軸輔助線與永遠面向鏡頭的標籤
+        // ==========================================
+        const axesHelper = new THREE.AxesHelper(100);
+        axesHelper.setColors(0xf38ba8, 0xa6e3a1, 0x89b4fa); // 統一 UI 顏色: X紅, Y綠, Z藍
+        scene.add(axesHelper);
+
+        function createAxisLabel(text, position, colorStr) {
+            // 利用 Canvas 畫出帶有透明背景的文字
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = colorStr;
+            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+            // 轉換為材質並建立 Sprite 物件
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false }); // depthTest: false 讓字不會被網格擋住
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.position.copy(position);
+            sprite.scale.set(20, 10, 1);
+            return sprite;
+        }
+
+        // 把標籤掛在各軸的末端 (長度 100，所以標籤放在 110 的位置)
+        scene.add(createAxisLabel('+X', new THREE.Vector3(110, 0, 0), '#f38ba8'));
+        scene.add(createAxisLabel('+Y', new THREE.Vector3(0, 110, 0), '#a6e3a1'));
+        scene.add(createAxisLabel('+Z', new THREE.Vector3(0, 0, 110), '#89b4fa'));
+        // ==========================================
+
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(120, 100, 180); 
 
@@ -155,7 +190,6 @@
         const modulesGroup = new THREE.Group(); 
         globalBaseGroup.add(modulesGroup); 
 
-        // 🌟 隱形追蹤器：末端座標測量點 (為求帥氣，我給它一顆很小的亮粉紅球，幫助你跟老師確認位置！)
         const endEffectorMarker = new THREE.Mesh(
             new THREE.SphereGeometry(2, 16, 16),
             new THREE.MeshBasicMaterial({ color: 0xf38ba8 })
@@ -448,10 +482,11 @@
                 }
             }
 
-            // 🌟 將隱形追蹤器綁定到最後一顆馬達的 Face 0 (正上方 44.5 處)
-            let lastNodeId = topologyArray[topologyArray.length - 1].id;
-            endEffectorMarker.position.set(0, 44.5, 0);
-            modules[lastNodeId].userData.rotator.add(endEffectorMarker);
+            if (topologyArray.length > 0) {
+                let lastNodeId = topologyArray[topologyArray.length - 1].id;
+                endEffectorMarker.position.set(0, 44.5, 0);
+                modules[lastNodeId].userData.rotator.add(endEffectorMarker);
+            }
 
             selectModule(selectedNodeId);
         }
@@ -570,7 +605,6 @@
             }
         });
         
-        // 🌟 核心：利用 3D 引擎運算正向運動學
         let worldVec = new THREE.Vector3();
 
         function animate() {
@@ -584,11 +618,10 @@
                 }
             }
 
-            // 🌟 提取末端追蹤球的三維空間座標 (相對於模組組原點)
             if (latestTopology.length > 0) {
                 endEffectorMarker.getWorldPosition(worldVec);
-                modulesGroup.worldToLocal(worldVec); // 把世界座標轉換為「以底座為原點」的相對座標
-
+                
+                // 🌟 直接輸出最純淨、不受父層級干擾的「絕對虛擬世界座標」！
                 document.getElementById('xyzDisplay').innerHTML = 
                     `X: ${worldVec.x.toFixed(1)} <br>` + 
                     `Y: ${worldVec.y.toFixed(1)} <br>` + 
