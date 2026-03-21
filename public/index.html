@@ -292,18 +292,25 @@
         });
 
         function selectModule(id) {
-            if (selectedNodeId && modules[selectedNodeId]) {
-                modules[selectedNodeId].traverse((child) => {
-                    if (child.isMesh && child.material.emissive) child.material.emissive.setHex(0x000000);
-                });
-            }
+            // 🌟 第一步：無差別全體熄燈！
+            // 掃描整個馬達群組，把所有會發光的材質全部切回黑色，保證不會有殘留的亮光
+            modulesGroup.traverse((child) => {
+                if (child.isMesh && child.material && child.material.emissive) {
+                    child.material.emissive.setHex(0x000000);
+                }
+            });
             
             selectedNodeId = id;
             const infoEl = document.getElementById('selectedInfo');
             
+            // 🌟 第二步：精準點亮指定的 ID！
             if (id && modules[id]) {
                 modules[id].traverse((child) => {
-                    if (child.isMesh && child.material.emissive) child.material.emissive.setHex(0x333333); 
+                    // 💡 關鍵防護罩：加上 child.userData.id === id 的判斷！
+                    // 這樣就算它掃描到掛在身上的子模組，只要 ID 不對，就不會讓它發光！
+                    if (child.isMesh && child.userData && child.userData.id === id && child.material.emissive) {
+                        child.material.emissive.setHex(0x333333); 
+                    }
                 });
                 infoEl.innerText = `當前操控節點: ID ${id}`;
                 infoEl.style.color = "#a6e3a1";
