@@ -157,7 +157,6 @@
             return sprite;
         }
 
-        // 🌟 把標籤存成全域變數，方便我們隨時挪動它們！
         let labelX = createAxisLabel('+X', '#f38ba8');
         let labelY = createAxisLabel('+Y', '#a6e3a1');
         let labelZ = createAxisLabel('+Z', '#89b4fa');
@@ -499,15 +498,17 @@
                 modules[lastNodeId].userData.rotator.add(endEffectorMarker);
             }
 
-            // 🌟 魔法降臨：自動適應軸線長度！
-            // 基礎長度是 100，每多一顆馬達就加 50 的長度，再加上 60 的安全距離，保證一定比模型高！
-            let maxAxisLen = Math.max(100, topologyArray.length * 50 + 60); 
+            // 🌟 精確計算：極限高度加上半個模組的距離 (約 22.5) 作為座標軸長度
+            let maxAxisLen = 100;
+            if (topologyArray.length > 0) {
+                maxAxisLen = Math.max(100, topologyArray.length * 44.5 + 22.5); 
+            }
             axesHelper.scale.set(maxAxisLen / 100, maxAxisLen / 100, maxAxisLen / 100);
             
-            // 把浮空標籤跟著推到最外圍
-            labelX.position.set(maxAxisLen + 10, 0, 0);
-            labelY.position.set(0, maxAxisLen + 10, 0);
-            labelZ.position.set(0, 0, maxAxisLen + 10);
+            // 確保標籤緊貼在軸線末端
+            labelX.position.set(maxAxisLen + 5, 0, 0);
+            labelY.position.set(0, maxAxisLen + 5, 0);
+            labelZ.position.set(0, 0, maxAxisLen + 5);
 
             selectModule(selectedNodeId);
         }
