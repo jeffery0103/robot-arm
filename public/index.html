@@ -46,14 +46,25 @@
         #btnArm, #baseRotationSelect { pointer-events: auto; }
 
         /* 🌟 魔法：手機螢幕尺寸專屬設定 */
+        /* 🌟 手機螢幕專屬設定 */
         @media (max-width: 768px) {
-            #ui-layer { left: 15px; top: 15px; right: 15px; padding: 15px; min-width: unset; }
+            #ui-layer { left: 10px; top: 10px; right: 10px; padding: 12px; min-width: unset; max-height: 40vh; }
+            #btnArm, #baseSettings, .hint, #selectionPanel, #angleListContainer { display: none !important; }
+            #ui-header h2 { font-size: 18px; }
             
-            /* 強制隱藏所有互動元件與提示，讓手機端變成純監視器！ */
-            #btnArm, #baseSettings, .hint { 
-                display: none !important; 
+            /* 📱 底部虛擬滑桿樣式 */
+            #mobileControlOverlay {
+                display: block !important; position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+                width: 85%; background: rgba(49, 50, 68, 0.95); padding: 20px; border-radius: 20px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.6); backdrop-filter: blur(10px); z-index: 100;
+                border: 1px solid rgba(137, 180, 250, 0.3); pointer-events: auto;
             }
         }
+
+        #mobileControlOverlay { display: none; } /* 電腦版預設隱藏 */
+        .slider-label { color: #f9e2af; font-weight: bold; margin-bottom: 10px; display: block; text-align: center; }
+        #mobileSlider { width: 100%; height: 10px; -webkit-appearance: none; background: #585b70; border-radius: 5px; outline: none; }
+        #mobileSlider::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; background: #89b4fa; border-radius: 50%; cursor: pointer; border: 3px solid #f5c2e7; }
     </style>
 </head>
 <body>
@@ -522,33 +533,27 @@
         const mouse = new THREE.Vector2();
 
         renderer.domElement.addEventListener('pointerdown', (event) => {
-            if(event.pointerType === 'touch') return; 
+        // 原本的 event.pointerType === 'touch' return 拿掉，改用以下判斷：
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
 
-            if (currentMode === "REMOTE") {
-                selectModule(null);
-                return;
-            }
-
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-
-            const intersects = raycaster.intersectObjects(modulesGroup.children, true);
-            
-            if (intersects.length > 0) {
-                let object = intersects[0].object;
-                while (object && (!object.userData || !object.userData.id)) {
-                    object = object.parent;
+        const intersects = raycaster.intersectObjects(modulesGroup.children, true);
+        if (intersects.length > 0) {
+            let object = intersects[0].object;
+            while (object && (!object.userData || !object.userData.id)) { object = object.parent; }
+            if (object && object.userData.id) {
+                selectModule(object.userData.id);
+                // 📱 手機端選中後同步滑桿位置
+                if (window.innerWidth <= 768) {
+                    const mSlider = document.getElementById('mobileSlider');
+                    const mLabel = document.getElementById('mLabel');
+                    mSlider.value = serverAngles[object.userData.id] || 500;
+                    mLabel.innerText = `正在操控 ID ${object.userData.id} 轉軸`;
                 }
-                if (object && object.userData && object.userData.id) {
-                    selectModule(object.userData.id);
-                } else {
-                    selectModule(0); 
-                }
-            } else {
-                selectModule(0); 
             }
-        });
+        }
+    });
 
         function selectModule(id) {
             for (let mid in modules) {
@@ -649,9 +654,9 @@
                 endEffectorMarker.getWorldPosition(worldVec);
                 
                 document.getElementById('xyzDisplay').innerHTML = 
-                    `X: ${worldVec.x.toFixed(1)} <br>` + 
-                    `Y: ${worldVec.y.toFixed(1)} <br>` + 
-                    `Z: ${worldVec.z.toFixed(1)}`;
+                `X: ${(worldVec.x * 2).toFixed(1)} <br>` + 
+                `Y: ${(worldVec.y * 2).toFixed(1)} <br>` + 
+                `Z: ${(worldVec.z * 2).toFixed(1)}`; 
             }
 
             renderer.render(scene, camera);
@@ -663,6 +668,24 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        const mSlider = document.getElementById('mobileSlider');
+    mSlider.addEventListener('input', (e) => {
+        if (selectedNodeId && selectedNodeId > 0 && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                cmd: 'SET_POS',
+                id: selectedNodeId,
+                pos: parseInt(e.target.value)
+            }));
+        }
+    });
+
     </script>
+
+    <div id="mobileControlOverlay" id="mControl">
+        <span class="slider-label" id="mLabel">請點擊 3D 關節進行控制</span>
+        <input type="range" id="mobileSlider" min="0" max="1000" value="500">
+    </div>
+
 </body>
 </html>
