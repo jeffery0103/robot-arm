@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>3D 模組化機械臂數位孿生</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e2e; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -16,10 +16,7 @@
             max-height: 90vh; 
         }
         
-        #ui-header { 
-            pointer-events: auto; cursor: pointer; user-select: none; 
-            text-align: center; padding-bottom: 5px;
-        }
+        #ui-header { pointer-events: auto; cursor: pointer; user-select: none; text-align: center; padding-bottom: 5px; }
         #ui-header h2 { margin: 0; text-align: left; }
         #toggleIcon { 
             font-size: 12px; color: #a6adc8; margin-top: 8px; font-weight: bold; 
@@ -27,12 +24,7 @@
         }
         #toggleIcon:hover { background: rgba(255,255,255,0.2); color: #cdd6f4; }
 
-        #ui-content { 
-            pointer-events: none; 
-            overflow-y: auto; 
-            padding-right: 5px;
-            transition: max-height 0.3s ease, opacity 0.3s ease;
-        }
+        #ui-content { pointer-events: none; overflow-y: auto; padding-right: 5px; transition: max-height 0.3s ease, opacity 0.3s ease; }
         #ui-content::-webkit-scrollbar { width: 6px; }
         #ui-content::-webkit-scrollbar-thumb { background: #585b70; border-radius: 3px; }
 
@@ -45,76 +37,86 @@
         
         #btnArm, #baseRotationSelect { pointer-events: auto; }
 
-        /* 🌟 魔法：手機螢幕尺寸專屬設定 */
-        /* 🌟 手機螢幕專屬設定 */
+        /* 📱 手機螢幕優化：UI 瘦身 */
         @media (max-width: 768px) {
-            #ui-layer { left: 10px; top: 10px; right: 10px; padding: 12px; min-width: unset; max-height: 40vh; }
+            #ui-layer { left: 10px; top: 10px; right: 10px; padding: 10px; min-width: unset; max-height: 30vh; }
             #btnArm, #baseSettings, .hint, #selectionPanel, #angleListContainer { display: none !important; }
-            #ui-header h2 { font-size: 18px; }
-            
-            /* 📱 底部虛擬滑桿樣式 */
+            #ui-header h2 { font-size: 16px; }
+            #toggleIcon { font-size: 10px; padding: 2px; }
+
+            /* 底部虛擬滑桿：選中才顯示 */
             #mobileControlOverlay {
-                display: block !important; position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-                width: 85%; background: rgba(49, 50, 68, 0.95); padding: 20px; border-radius: 20px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.6); backdrop-filter: blur(10px); z-index: 100;
-                border: 1px solid rgba(137, 180, 250, 0.3); pointer-events: auto;
+                display: block !important; visibility: hidden; opacity: 0;
+                position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+                width: 90%; background: rgba(49, 50, 68, 0.95); padding: 12px 20px; 
+                border-radius: 15px; z-index: 100;
+                transition: opacity 0.3s ease, visibility 0.3s;
+                touch-action: none; /* 🚫 禁止觸發瀏覽器縮放輔助按鈕 */
+                user-select: none; pointer-events: auto;
             }
+            #mobileControlOverlay.active { visibility: visible; opacity: 1; }
+            .slider-label { color: #f9e2af; font-weight: bold; margin-bottom: 5px; display: block; text-align: center; font-size: 14px; }
+            #mobileSlider { width: 100%; height: 8px; -webkit-appearance: none; background: #585b70; border-radius: 5px; outline: none; }
+            #mobileSlider::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; background: #89b4fa; border-radius: 50%; border: 3px solid #f5c2e7; }
         }
 
-        #mobileControlOverlay { display: none; } /* 電腦版預設隱藏 */
-        .slider-label { color: #f9e2af; font-weight: bold; margin-bottom: 10px; display: block; text-align: center; }
-        #mobileSlider { width: 100%; height: 10px; -webkit-appearance: none; background: #585b70; border-radius: 5px; outline: none; }
-        #mobileSlider::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; background: #89b4fa; border-radius: 50%; cursor: pointer; border: 3px solid #f5c2e7; }
+        #mobileControlOverlay { display: none; }
+
+        /* 🔄 防橫向遮罩 */
+        #orientation-mask {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: #1e1e2e; z-index: 10000; justify-content: center; align-items: center;
+            color: #cdd6f4; text-align: center;
+        }
+        .mask-content .rotate-icon { font-size: 50px; margin-bottom: 20px; animation: rotateAnim 2s infinite ease-in-out; }
+        @keyframes rotateAnim { 0% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+        @media screen and (orientation: landscape) and (max-width: 1024px) { #orientation-mask { display: flex; } }
     </style>
 </head>
 <body>
+    <div id="orientation-mask">
+        <div class="mask-content">
+            <div class="rotate-icon">🔄</div>
+            <p>請將手機轉回直向模式</p>
+            <span>以獲得最佳操控體驗</span>
+        </div>
+    </div>
+
     <div id="ui-layer">
         <div id="ui-header" onclick="toggleUI()">
             <h2> 3D 數位監控</h2>
             <div id="toggleIcon">▼ 展開面板 ▼</div>
         </div>
-
         <div id="ui-content">
             <div style="margin-top: 15px;"></div>
             <div id="statusBadge" class="status-badge status-OFFLINE">等待連線...</div>
             <div>系統總節點數: <span id="totalCount">0</span></div>
             <div style="margin-top: 5px;">控制模式: <span id="modeDisplay" style="color:#a6e3a1; font-weight:bold;">🌐 網頁主控</span></div>
             <div style="color: #f38ba8; font-weight: bold; margin-top: 5px;" id="errorMsg"></div>
-            
-            <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%; transition: 0.3s;">🔓 網頁解鎖通電</button>
-            
+            <button id="btnArm" style="display: none; background: #a6e3a1; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%;">🔓 網頁解鎖通電</button>
             <div id="baseSettings" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
                 <strong>⚙️ 實體底座設定：</strong>
-                <div style="margin-top: 8px; font-size: 14px; display: flex; align-items: center; justify-content: space-between;">
-                    <label>接頭方向</label>
-                    <select id="baseRotationSelect" style="background: #313244; color: #a6e3a1; border: 1px solid #585b70; border-radius: 4px; padding: 4px; font-weight: bold; cursor: pointer;">
-                        <option value="0">0° (預設)     </option>
-                        <option value="90">90° (逆時針轉) </option>
-                        <option value="180">180°          </option>
-                        <option value="-90">270° (順時針轉)</option>
-                    </select>
-                </div>
+                <select id="baseRotationSelect" style="background: #313244; color: #a6e3a1; border: 1px solid #585b70; border-radius: 4px; padding: 4px; font-weight: bold; width: 100%; margin-top: 5px;">
+                    <option value="0">0° (預設)</option>
+                    <option value="90">90° (逆時針)</option>
+                    <option value="180">180°</option>
+                    <option value="-90">270° (順時針)</option>
+                </select>
             </div>
-
-            <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px; font-weight: bold; font-size: 15px;">
-                <div id="selectedInfo" style="color: #a6adc8;">當前操控節點: 預設底座 (ID 0)</div>
-            </div>
-
-            <div id="angleListContainer" style="margin-top: 15px; font-size: 14px; color: #a6adc8; border-top: 1px solid #45475a; padding-top: 10px;">
-                <strong> 關節即時角度：</strong>
-                <div id="angleListData" style="margin-top: 5px; font-family: monospace;">等待數據...</div>
-            </div>
-
+            <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;"><div id="selectedInfo">當前操控節點: ID 0</div></div>
+            <div id="angleListContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;"><strong> 關節即時角度：</strong><div id="angleListData" style="font-family: monospace;">等待數據...</div></div>
             <div id="endEffectorPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
-                <strong>🎯 絕對空間座標 (0,0,0 為準)：</strong>
-                <div id="xyzDisplay" style="margin-top: 5px; font-family: monospace; font-size: 15px; color: #f9e2af; font-weight: bold; line-height: 1.6;">
-                    X: 0.0 <br>
-                    Y: 0.0 <br>
-                    Z: 0.0
-                </div>
+                <strong>🎯 絕對空間座標：</strong>
+                <div id="xyzDisplay" style="color: #f9e2af; font-weight: bold;">X: 0.0 <br>Y: 0.0 <br>Z: 0.0</div>
             </div>
         </div>
     </div>
+
+    <div id="mobileControlOverlay">
+        <span class="slider-label" id="mLabel">請點擊 3D 關節進行控制</span>
+        <input type="range" id="mobileSlider" min="0" max="1000" value="500">
+    </div>
+
     <div id="canvas-container"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -126,566 +128,164 @@
         const toggleIcon = document.getElementById('toggleIcon');
         let isUICollapsed = window.innerWidth <= 768; 
 
+        function toggleUI() { isUICollapsed = !isUICollapsed; updateUIState(); }
         function updateUIState() {
-            if (isUICollapsed) {
-                uiContent.style.display = 'none';
-                toggleIcon.innerHTML = '▼ 點擊展開面板 ▼';
-            } else {
-                uiContent.style.display = 'block';
-                toggleIcon.innerHTML = '▲ 點擊折疊面板 ▲';
-            }
-        }
-
-        function toggleUI() {
-            isUICollapsed = !isUICollapsed;
-            updateUIState();
+            if (isUICollapsed) { uiContent.style.display = 'none'; toggleIcon.innerHTML = '▼ 點擊展開面板 ▼'; }
+            else { uiContent.style.display = 'block'; toggleIcon.innerHTML = '▲ 點擊折疊面板 ▲'; }
         }
         updateUIState();
 
-        const container = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
-        const gridHelper = new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244);
-        scene.add(gridHelper);
-
-        const axesHelper = new THREE.AxesHelper(100);
-        const colors = axesHelper.geometry.attributes.color;
-        colors.setXYZ(0, 0.95, 0.54, 0.66); colors.setXYZ(1, 0.95, 0.54, 0.66);
-        colors.setXYZ(2, 0.65, 0.89, 0.63); colors.setXYZ(3, 0.65, 0.89, 0.63);
-        colors.setXYZ(4, 0.54, 0.71, 0.98); colors.setXYZ(5, 0.54, 0.71, 0.98);
-        scene.add(axesHelper);
-
-        function createAxisLabel(text, colorStr) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.font = 'bold 48px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = colorStr;
-            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-
-            const texture = new THREE.CanvasTexture(canvas);
-            const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false }); 
-            const sprite = new THREE.Sprite(spriteMat);
-            sprite.scale.set(20, 10, 1);
-            return sprite;
-        }
-
-        let labelX = createAxisLabel('+X', '#f38ba8');
-        let labelY = createAxisLabel('+Y', '#a6e3a1');
-        let labelZ = createAxisLabel('+Z', '#89b4fa');
-        
-        labelX.position.set(110, 0, 0);
-        labelY.position.set(0, 110, 0);
-        labelZ.position.set(0, 0, 110);
-        
-        scene.add(labelX);
-        scene.add(labelY);
-        scene.add(labelZ);
+        scene.add(new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244));
+        const axesHelper = new THREE.AxesHelper(100); scene.add(axesHelper);
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
-        camera.position.set(120, 100, 180); 
-
+        camera.position.set(120, 100, 180);
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        container.appendChild(renderer.domElement);
-
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true; 
-        controls.target.set(0, 50, 0);
+        controls.enableDamping = true; controls.target.set(0, 50, 0);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(100, 150, 50);
-        scene.add(dirLight);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(100, 150, 50); scene.add(dirLight);
 
-        const globalBaseGroup = new THREE.Group(); 
-        scene.add(globalBaseGroup);
+        const globalBaseGroup = new THREE.Group(); scene.add(globalBaseGroup);
+        const modulesGroup = new THREE.Group(); globalBaseGroup.add(modulesGroup); 
+        const endEffectorMarker = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial({ color: 0xf38ba8 }));
 
-        const modulesGroup = new THREE.Group(); 
-        globalBaseGroup.add(modulesGroup); 
-
-        const endEffectorMarker = new THREE.Mesh(
-            new THREE.SphereGeometry(2, 16, 16),
-            new THREE.MeshBasicMaterial({ color: 0xf38ba8 })
-        );
-
-        const CUBE_SIZE = 30; 
-        const PIVOT_HEIGHT = 5; 
-
-        let modules = {}; 
-        let currentTopologyStr = ""; 
-        let latestTopology = []; 
-        let baseHeightOffset = 0; 
-
-        let baseStlGeometry = null;
-        let pivotStlGeometry = null;
-        let bodyStlGeometry = null;
+        let modules = {}; let latestTopology = []; let serverAngles = {}; let selectedNodeId = 0;
+        let baseStlGeometry, pivotStlGeometry, bodyStlGeometry;
         const stlLoader = new THREE.STLLoader();
 
         function addBlackEdges(mesh) {
             const edges = new THREE.EdgesGeometry(mesh.geometry, 30);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1 });
-            const lineSegments = new THREE.LineSegments(edges, lineMat);
-            mesh.add(lineSegments);
+            mesh.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x111111 })));
         }
 
-        function checkAndRebuild() {
-            if (latestTopology.length > 0) rebuildTopology(latestTopology);
-        }
-
-        stlLoader.load('./base.stl', function (geometry) {
-            geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI / 2); 
-            geometry.scale(0.5, 0.5, 0.5); 
-            geometry.computeBoundingBox();
-            baseHeightOffset = -geometry.boundingBox.min.y; 
-
-            const baseMat = new THREE.MeshPhongMaterial({ color: 0xf5c2e7 });
-            const baseMesh = new THREE.Mesh(geometry, baseMat);
-            baseMesh.position.y = baseHeightOffset; 
-            
-            addBlackEdges(baseMesh); 
-            globalBaseGroup.add(baseMesh); 
-            modulesGroup.position.y = baseHeightOffset; 
-            checkAndRebuild();
+        stlLoader.load('./base.stl', g => { 
+            g.rotateY(Math.PI/2); g.scale(0.5, 0.5, 0.5); g.computeBoundingBox();
+            const mesh = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ color: 0xf5c2e7 }));
+            mesh.position.y = -g.boundingBox.min.y; addBlackEdges(mesh); globalBaseGroup.add(mesh);
+            modulesGroup.position.y = -g.boundingBox.min.y; rebuildTopology(latestTopology);
         });
-
-        stlLoader.load('./pivot.stl', function (geometry) {
-            geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); 
-            geometry.scale(0.5, 0.5, 0.5); 
-            pivotStlGeometry = geometry;
-            checkAndRebuild(); 
-        });
-
-        stlLoader.load('./body.stl', function (geometry) {
-            geometry.computeVertexNormals();
-            geometry.rotateY(Math.PI); 
-            geometry.scale(0.5, 0.5, 0.5); 
-            bodyStlGeometry = geometry;
-            checkAndRebuild(); 
-        });
+        stlLoader.load('./pivot.stl', g => { g.rotateY(Math.PI); g.scale(0.5, 0.5, 0.5); pivotStlGeometry = g; rebuildTopology(latestTopology); });
+        stlLoader.load('./body.stl', g => { g.rotateY(Math.PI); g.scale(0.5, 0.5, 0.5); bodyStlGeometry = g; rebuildTopology(latestTopology); });
 
         const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
-
-        let serverAngles = {}; 
-        let lastWsMsgTime = 0; 
-        let currentMode = "WEB"; 
-        let selectedNodeId = 0; 
-
-        setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) {
-                if (Date.now() - lastWsMsgTime > 2000) {
-                    updateSystemUI("S3_OFFLINE");
-                }
-            }
-        }, 1000);
-
-        function updateSystemUI(state, data = null) {
-            const badge = document.getElementById('statusBadge');
-            const btnArmEl = document.getElementById('btnArm');
-            const errorMsgEl = document.getElementById('errorMsg');
-
-            if (state === "SERVER_ONLY") {
-                badge.className = 'status-badge status-OFFLINE';
-                badge.style.background = '#89b4fa';
-                badge.innerText = '🌐 伺服器連線中 (尋找主板...)';
-                if (btnArmEl) btnArmEl.style.display = 'none';
-            } 
-            else if (state === "S3_OFFLINE") {
-                badge.className = 'status-badge status-ERROR';
-                badge.style.background = '#f38ba8';
-                badge.innerText = '⚠️ 伺服器已連線，但 S3 主板未上線';
-                if (btnArmEl) btnArmEl.style.display = 'none';
-                
-                if (currentTopologyStr !== "") {
-                    latestTopology = [];
-                    rebuildTopology([]); 
-                    currentTopologyStr = "";
-                    selectModule(null);
-                    document.getElementById('angleListData').innerHTML = "等待數據...";
-                    document.getElementById('xyzDisplay').innerHTML = "X: 0.0 <br>Y: 0.0 <br>Z: 0.0";
-                }
-            } 
-            else if (state === "OFFLINE") {
-                badge.className = 'status-badge status-OFFLINE';
-                badge.style.background = '';
-                badge.innerText = '❌ 伺服器斷線';
-                if (btnArmEl) btnArmEl.style.display = 'none';
-            } 
-            else if (state === "ONLINE" && data) {
-                badge.className = `status-badge status-${data.status}`;
-                badge.style.background = ''; 
-                badge.innerText = data.status;
-                if (errorMsgEl) errorMsgEl.innerText = data.msg || "";
-
-                if (data.status === "READY") {
-                    if (btnArmEl) {
-                        btnArmEl.style.display = 'block';
-                        btnArmEl.innerText = "🔓 網頁解鎖通電";
-                        btnArmEl.style.background = '#a6e3a1';
-                        btnArmEl.disabled = false;
-                        btnArmEl.style.cursor = 'pointer';
-                    }
-                } else if (data.status === "WORKING") {
-                    if (btnArmEl) {
-                        btnArmEl.style.display = 'block';
-                        btnArmEl.innerText = "✅ 系統已解鎖 / 允許操控";
-                        btnArmEl.style.background = '#89b4fa';
-                        btnArmEl.disabled = true;
-                        btnArmEl.style.cursor = 'not-allowed';
-                    }
-                } else if (data.status === "HOMING") {
-                    if (btnArmEl) {
-                        btnArmEl.style.display = 'block';
-                        btnArmEl.innerText = "🧘 歸零中...";
-                        btnArmEl.style.background = '#f9e2af';
-                        btnArmEl.disabled = true;
-                    }
-                } else {
-                    if (btnArmEl) btnArmEl.style.display = 'none';
-                }
-            }
-        }
-
-        ws.onopen = () => {
-            updateSystemUI("SERVER_ONLY");
-            ws.send(JSON.stringify({cmd: 'STATUS'}));
-        };
-
-        ws.onmessage = (event) => {
-            lastWsMsgTime = Date.now(); 
-            let data;
-            
-            try {
-                data = JSON.parse(event.data);
-            } catch (err) {
-                console.error("⚠️ 忽略無效封包:", event.data);
-                return;
-            }
-            
-            if (data.total !== undefined) {
-                const totalCountEl = document.getElementById('totalCount');
-                if (totalCountEl) totalCountEl.innerText = data.total;
-            }
-            
-            if (data.mode !== undefined) {
-                currentMode = data.mode; 
-                const modeDisplay = document.getElementById('modeDisplay');
-                if (data.mode === "WEB") {
-                    modeDisplay.innerText = "🌐 網頁主控";
-                    modeDisplay.style.color = "#a6e3a1";
-                    if (selectedNodeId === null) selectModule(0); 
-                } else if (data.mode === "REMOTE") {
-                    modeDisplay.innerText = "🎮 實體遙控器";
-                    modeDisplay.style.color = "#fab387";
-                    if (selectedNodeId !== null) selectModule(null);
-                }
-            }
-
-            updateSystemUI("ONLINE", data);
-
-            if (data.status === "READY" || data.status === "WORKING" || data.status === "HOMING") {
+        ws.onmessage = e => {
+            const data = JSON.parse(e.data);
+            if (data.status === "WORKING") {
                 latestTopology = data.topology || [];
-                const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
-                
-                if (newTopoStr !== currentTopologyStr) {
-                    rebuildTopology(latestTopology);
-                    currentTopologyStr = newTopoStr;
-                    if (selectedNodeId !== null && selectedNodeId !== 0 && !latestTopology.find(n => n.id === selectedNodeId)) {
-                        selectModule(0); 
-                    }
-                }
-
-                let angleHtmlStr = "";
-                latestTopology.forEach((node) => {
-                    if (modules[node.id] && node.angle !== undefined) {
-                        serverAngles[node.id] = node.angle; 
-
-                        const realAngle = ((node.angle - 500) * (240 / 1000)).toFixed(1);
-                        const sign = realAngle >= 0 ? "+" : ""; 
-                        angleHtmlStr += `ID ${node.id} 轉軸: <span style="color:#a6e3a1;">${sign}${realAngle}°</span><br>`;
-                    }
-                });
-                
-                const angleListDataEl = document.getElementById('angleListData');
-                if (angleListDataEl) angleListDataEl.innerHTML = angleHtmlStr;
+                latestTopology.forEach(n => serverAngles[n.id] = n.angle);
+                rebuildTopology(latestTopology);
             }
+            updateSystemUI(data);
         };
 
-        ws.onclose = () => {
-            updateSystemUI("OFFLINE");
-        };
-
-        const btnArm = document.getElementById('btnArm');
-        if (btnArm) {
-            btnArm.addEventListener('click', () => {
-                ws.send(JSON.stringify({ cmd: "ARM" }));
-            });
+        function updateSystemUI(data) {
+            document.getElementById('totalCount').innerText = data.total || 0;
+            document.getElementById('statusBadge').innerText = data.status;
+            document.getElementById('statusBadge').className = `status-badge status-${data.status}`;
         }
 
-        const baseRotationSelect = document.getElementById('baseRotationSelect');
-        if (baseRotationSelect) {
-            baseRotationSelect.addEventListener('change', (e) => {
-                modulesGroup.rotation.y = parseInt(e.target.value) * (Math.PI / 180);
+        function rebuildTopology(topo) {
+            if (!pivotStlGeometry || !bodyStlGeometry) return;
+            while(modulesGroup.children.length > 0) modulesGroup.remove(modulesGroup.children[0]);
+            modules = {};
+            topo.forEach(node => {
+                const group = new THREE.Group(); const rotator = new THREE.Group(); group.add(rotator);
+                const pMesh = new THREE.Mesh(pivotStlGeometry, new THREE.MeshPhongMaterial({ color: 0xa6adc8 }));
+                const bMesh = new THREE.Mesh(bodyStlGeometry, new THREE.MeshPhongMaterial({ color: 0xf9e2af }));
+                rotator.add(bMesh); group.add(pMesh); addBlackEdges(pMesh); addBlackEdges(bMesh);
+                group.userData = { id: node.id, rotator: rotator }; pMesh.userData = { id: node.id, type: 'pivot' }; bMesh.userData = { id: node.id, type: 'body' };
+                modules[node.id] = group;
             });
-        }
-
-        function createModule(id, colorHex) {
-            const baseGroup = new THREE.Group(); 
-            const rotatorGroup = new THREE.Group(); 
-            baseGroup.add(rotatorGroup);
-
-            let pivotMesh;
-            const pivotMat = new THREE.MeshPhongMaterial({ color: 0xa6adc8, shininess: 100 });
-            if (pivotStlGeometry) {
-                pivotMesh = new THREE.Mesh(pivotStlGeometry, pivotMat);
-            } else {
-                const pivotGeo = new THREE.CylinderGeometry(13, 13, PIVOT_HEIGHT, 32);
-                pivotMesh = new THREE.Mesh(pivotGeo, pivotMat);
-                pivotMesh.position.y = PIVOT_HEIGHT / 2; 
-            }
-            addBlackEdges(pivotMesh); 
-            baseGroup.add(pivotMesh); 
-
-            let bodyMesh;
-            const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex }); 
-            if (bodyStlGeometry) {
-                bodyMesh = new THREE.Mesh(bodyStlGeometry, bodyMat);
-            } else {
-                const bodyGeo = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
-                bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-                bodyMesh.position.y = PIVOT_HEIGHT + (CUBE_SIZE / 2); 
-            }
-            addBlackEdges(bodyMesh); 
-            rotatorGroup.add(bodyMesh); 
-
-            baseGroup.userData = { id: id, rotator: rotatorGroup };
-            pivotMesh.userData = { id: id, type: 'pivot' };
-            bodyMesh.userData = { id: id, type: 'body' };
-
-            return baseGroup;
-        }
-
-        function rebuildTopology(topologyArray) {
-            while(modulesGroup.children.length > 0) {
-                modulesGroup.remove(modulesGroup.children[0]);
-            }
-            modules = {}; 
-
-            if (!topologyArray || topologyArray.length === 0) return;
-
-            topologyArray.forEach((node) => {
-                modules[node.id] = createModule(node.id, 0xf9e2af);
-            });
-
-            if (modules[1]) {
-                modules[1].position.set(0, 0, 0); 
-                modulesGroup.add(modules[1]);
-            }
-
-            for (let i = 0; i < topologyArray.length; i++) {
-                const parentNode = topologyArray[i];
-                const parentId = parentNode.id;
-                const childId = parentId + 1; 
-                const parentFace = parentNode.face; 
-
-                if (modules[childId] && modules[parentId]) {
-                    if (parentFace === 0) { 
-                        modules[childId].position.set(0, 44.5, 0);
-                        modules[childId].rotation.set(0, 0, 0); 
-                    } 
-                    else if (parentFace === 1) { 
-                        modules[childId].position.set(-20.0, 24.5, 0);
-                        modules[childId].rotation.set(0, 0, Math.PI / 2); 
-                    }
-                    modules[parentId].userData.rotator.add(modules[childId]);
+            topo.forEach(node => {
+                if (node.id === 1) modulesGroup.add(modules[1]);
+                const child = modules[node.id + 1];
+                if (child) {
+                    if (node.face === 0) child.position.set(0, 44.5, 0);
+                    else { child.position.set(-20, 24.5, 0); child.rotation.z = Math.PI/2; }
+                    modules[node.id].userData.rotator.add(child);
                 }
-            }
-
-            if (topologyArray.length > 0) {
-                let lastNodeId = topologyArray[topologyArray.length - 1].id;
-                endEffectorMarker.position.set(0, 44.5, 0);
-                modules[lastNodeId].userData.rotator.add(endEffectorMarker);
-            }
-
-            let maxAxisLen = 100;
-            if (topologyArray.length > 0) {
-                maxAxisLen = Math.max(100, topologyArray.length * 44.5 + 22.5); 
-            }
-            
-            axesHelper.scale.set(1, maxAxisLen / 100, 1);
-            
-            labelX.position.set(110, 0, 0);
-            labelY.position.set(0, maxAxisLen + 5, 0);
-            labelZ.position.set(0, 0, 110);
-
+            });
             selectModule(selectedNodeId);
         }
 
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        renderer.domElement.addEventListener('pointerdown', (event) => {
-        // 原本的 event.pointerType === 'touch' return 拿掉，改用以下判斷：
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        raycaster.setFromCamera(mouse, camera);
-
-        const intersects = raycaster.intersectObjects(modulesGroup.children, true);
-        if (intersects.length > 0) {
-            let object = intersects[0].object;
-            while (object && (!object.userData || !object.userData.id)) { object = object.parent; }
-            if (object && object.userData.id) {
-                selectModule(object.userData.id);
-                // 📱 手機端選中後同步滑桿位置
-                if (window.innerWidth <= 768) {
-                    const mSlider = document.getElementById('mobileSlider');
-                    const mLabel = document.getElementById('mLabel');
-                    mSlider.value = serverAngles[object.userData.id] || 500;
-                    mLabel.innerText = `正在操控 ID ${object.userData.id} 轉軸`;
-                }
-            }
-        }
-    });
-
+        // 🌟 修正後的選取邏輯：切換時自動停止舊馬達
         function selectModule(id) {
+            const mOverlay = document.getElementById('mobileControlOverlay');
+            if (selectedNodeId && selectedNodeId !== 0 && selectedNodeId !== id) {
+                if (ws.readyState === 1) ws.send(JSON.stringify({ cmd: 'WEB_JOY', id: selectedNodeId, dir: 0 }));
+            }
             for (let mid in modules) {
-                modules[mid].traverse((child) => {
-                    if (child.isMesh && child.userData) {
-                        if (child.userData.type === 'pivot') child.material.color.setHex(0xa6adc8);
-                        if (child.userData.type === 'body') child.material.color.setHex(0xf9e2af);
-                    }
+                modules[mid].traverse(c => {
+                    if (c.isMesh && c.userData.type === 'pivot') c.material.color.setHex(mid == id ? 0x89b4fa : 0xa6adc8);
+                    if (c.isMesh && c.userData.type === 'body') c.material.color.setHex(mid == id ? 0x89b4fa : 0xf9e2af);
                 });
             }
-            
             selectedNodeId = id;
-            const infoEl = document.getElementById('selectedInfo');
-            
-            if (id !== null && id > 0 && modules[id]) {
-                modules[id].traverse((child) => {
-                    if (child.isMesh && child.userData && child.userData.id === id && (child.userData.type === 'pivot' || child.userData.type === 'body')) {
-                        child.material.color.setHex(0x89b4fa); 
-                    }
-                });
-                infoEl.innerText = `當前操控節點: ID ${id}`;
-                infoEl.style.color = "#89b4fa"; 
-            } 
-            else if (id === 0) {
-                infoEl.innerText = "當前操控節點: 預設底座 (ID 0)";
-                infoEl.style.color = "#a6adc8";
-            } 
-            else {
-                infoEl.innerText = "當前操控節點: 無";
-                infoEl.style.color = "#a6adc8";
+            document.getElementById('selectedInfo').innerText = `當前操控節點: ID ${id || 0}`;
+            if (window.innerWidth <= 768) {
+                if (id > 0) {
+                    mOverlay.classList.add('active');
+                    document.getElementById('mobileSlider').value = serverAngles[id] || 500;
+                    document.getElementById('mLabel').innerText = `控制 ID ${id} 轉軸`;
+                } else mOverlay.classList.remove('active');
             }
         }
 
-        window.addEventListener('keydown', (event) => {
-            if (event.key === 'n' || event.key === 'N') {
-                ws.send(JSON.stringify({cmd: 'TOGGLE_MODE'}));
-                return;
-            }
-
-            if (event.code === 'Space') {
-                event.preventDefault(); 
-                if (currentMode !== "REMOTE") {
-                    ws.send(JSON.stringify({cmd: 'RESET_ALL'}));
-                }
-                return;
-            }
-
-            if (event.repeat) return; 
-            if (currentMode === "REMOTE") return; 
-
-            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                event.preventDefault(); 
-                let maxId = latestTopology.length; 
-                let currentId = selectedNodeId || 0;
-
-                if (event.key === 'ArrowUp' && currentId < maxId) {
-                    selectModule(currentId + 1); 
-                } else if (event.key === 'ArrowDown' && currentId > 0) {
-                    selectModule(currentId - 1); 
-                }
-                return; 
-            }
-
-            if (!selectedNodeId || selectedNodeId === 0) return; 
-            
-            let dir = 0;
-            if (event.key === 'ArrowRight') dir = 1;  
-            if (event.key === 'ArrowLeft') dir = -1;  
-
-            if (dir !== 0) {
-                ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: dir}));
-            }
-        });
-
-        window.addEventListener('keyup', (event) => {
-            if (currentMode === "REMOTE") return;
-            if (!selectedNodeId || selectedNodeId === 0) return; 
-
-            if (['ArrowRight', 'ArrowLeft'].includes(event.key)) {
-                ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: 0})); 
-            }
-        });
-        
-        let worldVec = new THREE.Vector3();
-
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update(); 
-            
-            for (let id in serverAngles) {
-                if (modules[id]) {
-                    const targetRad = (serverAngles[id] - 500) * (240 / 1000) * (Math.PI / 180);
-                    modules[id].userData.rotator.rotation.y += (targetRad - modules[id].userData.rotator.rotation.y) * 0.15;
-                }
-            }
-
-            if (latestTopology.length > 0) {
-                endEffectorMarker.getWorldPosition(worldVec);
-                
-                document.getElementById('xyzDisplay').innerHTML = 
-                `X: ${(worldVec.x * 2).toFixed(1)} <br>` + 
-                `Y: ${(worldVec.y * 2).toFixed(1)} <br>` + 
-                `Z: ${(worldVec.z * 2).toFixed(1)}`; 
-            }
-
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+        renderer.domElement.addEventListener('pointerdown', e => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const isects = raycaster.intersectObjects(modulesGroup.children, true);
+            if (isects.length > 0) {
+                let o = isects[0].object; while (o && !o.userData.id) o = o.parent;
+                if (o) selectModule(o.userData.id);
+            } else selectModule(0);
         });
 
         const mSlider = document.getElementById('mobileSlider');
-    mSlider.addEventListener('input', (e) => {
-        if (selectedNodeId && selectedNodeId > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                cmd: 'SET_POS',
-                id: selectedNodeId,
-                pos: parseInt(e.target.value)
-            }));
+        mSlider.addEventListener('touchstart', e => e.stopPropagation(), {passive: false});
+        mSlider.addEventListener('touchmove', e => e.stopPropagation(), {passive: false});
+        mSlider.addEventListener('input', e => {
+            if (selectedNodeId > 0 && ws.readyState === 1) {
+                ws.send(JSON.stringify({ cmd: 'SET_POS', id: selectedNodeId, pos: parseInt(e.target.value) }));
+            }
+        });
+
+        window.addEventListener('keydown', e => {
+            if (e.code === 'Space') { e.preventDefault(); ws.send(JSON.stringify({cmd: 'RESET_ALL'})); return; }
+            if (selectedNodeId > 0) {
+                let dir = 0;
+                if (e.key === 'ArrowRight') dir = 1; if (e.key === 'ArrowLeft') dir = -1;
+                if (dir !== 0) ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: dir}));
+            }
+        });
+        window.addEventListener('keyup', e => {
+            if (selectedNodeId > 0 && ['ArrowRight', 'ArrowLeft'].includes(e.key)) {
+                ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: 0}));
+            }
+        });
+
+        let worldVec = new THREE.Vector3();
+        function animate() {
+            requestAnimationFrame(animate); controls.update();
+            for (let id in serverAngles) if (modules[id]) {
+                const target = (serverAngles[id] - 500) * (240 / 1000) * (Math.PI / 180);
+                modules[id].userData.rotator.rotation.y += (target - modules[id].userData.rotator.rotation.y) * 0.15;
+            }
+            if (latestTopology.length > 0) {
+                modules[latestTopology[latestTopology.length-1].id].userData.rotator.getWorldPosition(worldVec);
+                // 🌟 修正後的 2 倍座標顯示
+                document.getElementById('xyzDisplay').innerHTML = `X: ${(worldVec.x*2).toFixed(1)} <br>Y: ${(worldVec.y*2).toFixed(1)} <br>Z: ${(worldVec.z*2).toFixed(1)}`;
+            }
+            renderer.render(scene, camera);
         }
-    });
-
+        animate();
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
     </script>
-
-    <div id="mobileControlOverlay" id="mControl">
-        <span class="slider-label" id="mLabel">請點擊 3D 關節進行控制</span>
-        <input type="range" id="mobileSlider" min="0" max="1000" value="500">
-    </div>
-
 </body>
 </html>
