@@ -155,6 +155,7 @@
         const endEffectorMarker = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial({ color: 0xf38ba8 }));
 
         let modules = {}; let latestTopology = []; let serverAngles = {}; let selectedNodeId = 0;
+        let currentTopologyStr = "";
         let baseStlGeometry, pivotStlGeometry, bodyStlGeometry;
         const stlLoader = new THREE.STLLoader();
 
@@ -178,7 +179,13 @@
             if (data.status === "WORKING") {
                 latestTopology = data.topology || [];
                 latestTopology.forEach(n => serverAngles[n.id] = n.angle);
-                rebuildTopology(latestTopology);
+                
+                // 核心修正：確認拓樸結構真的有改變時，才重新建構 3D 模型
+                const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
+                if (newTopoStr !== currentTopologyStr) {
+                    rebuildTopology(latestTopology);
+                    currentTopologyStr = newTopoStr;
+                }
             }
             updateSystemUI(data);
         };
