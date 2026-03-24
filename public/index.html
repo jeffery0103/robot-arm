@@ -37,14 +37,12 @@
         
         #btnArm, #baseRotationSelect { pointer-events: auto; }
 
-        /* 📱 手機螢幕優化：UI 瘦身 */
         @media (max-width: 768px) {
             #ui-layer { left: 10px; top: 10px; right: 10px; padding: 10px; min-width: unset; max-height: 30vh; }
             #btnArm, #baseSettings, .hint, #selectionPanel, #angleListContainer { display: none !important; }
             #ui-header h2 { font-size: 16px; }
             #toggleIcon { font-size: 10px; padding: 2px; }
 
-            /* 底部虛擬滑桿：選中才顯示 */
             #mobileControlOverlay {
                 display: block !important; visibility: hidden; opacity: 0;
                 position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -62,7 +60,6 @@
 
         #mobileControlOverlay { display: none; }
 
-        /* 🔄 防橫向遮罩 */
         #orientation-mask {
             display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background-color: #1e1e2e; z-index: 10000; justify-content: center; align-items: center;
@@ -104,7 +101,10 @@
                 </select>
             </div>
             <div id="selectionPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;"><div id="selectedInfo">當前操控節點: ID 0</div></div>
-            <div id="angleListContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;"><strong> 關節即時角度：</strong><div id="angleListData" style="font-family: monospace;">等待數據...</div></div>
+            <div id="angleListContainer" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
+                <strong> 關節即時角度：</strong>
+                <div id="angleListData" style="font-family: monospace; margin-top: 5px;">等待數據...</div>
+            </div>
             <div id="endEffectorPanel" style="margin-top: 15px; border-top: 1px solid #45475a; padding-top: 10px;">
                 <strong>🎯 絕對空間座標：</strong>
                 <div id="xyzDisplay" style="color: #f9e2af; font-weight: bold;">X: 0.0 <br>Y: 0.0 <br>Z: 0.0</div>
@@ -139,17 +139,13 @@
         scene.add(new THREE.GridHelper(200, 50, 0x89b4fa, 0x313244));
         const axesHelper = new THREE.AxesHelper(100); scene.add(axesHelper);
 
-        // 🌟 復活的魔法：永遠面向鏡頭的座標文字
         function createAxisLabel(text, colorStr) {
             const canvas = document.createElement('canvas');
             canvas.width = 128; canvas.height = 64;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.font = 'bold 48px Arial';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillStyle = colorStr;
-            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = 'bold 48px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = colorStr; ctx.fillText(text, canvas.width / 2, canvas.height / 2);
             const texture = new THREE.CanvasTexture(canvas);
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
             sprite.scale.set(20, 10, 1);
@@ -174,11 +170,13 @@
 
         const globalBaseGroup = new THREE.Group(); scene.add(globalBaseGroup);
         const modulesGroup = new THREE.Group(); globalBaseGroup.add(modulesGroup); 
-        const endEffectorMarker = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial({ color: 0xf38ba8 }));
+        // 🌟 隱形的末端追蹤點，用來精準抓取座標
+        const endEffectorMarker = new THREE.Object3D(); 
 
         let modules = {}; let latestTopology = []; let serverAngles = {}; let selectedNodeId = 0;
-        let currentTopologyStr = ""; // 🌟 確保防抖動的安全鎖有乖乖待著
+        let currentTopologyStr = ""; 
         let baseStlGeometry, pivotStlGeometry, bodyStlGeometry;
+        let baseMesh = null; // 🌟 宣告底座 Mesh 變數以利變色控制
         const stlLoader = new THREE.STLLoader();
 
         function addBlackEdges(mesh) {
@@ -188,8 +186,8 @@
 
         stlLoader.load('./base.stl', g => { 
             g.rotateY(Math.PI/2); g.scale(0.5, 0.5, 0.5); g.computeBoundingBox();
-            const mesh = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ color: 0xf5c2e7 }));
-            mesh.position.y = -g.boundingBox.min.y; addBlackEdges(mesh); globalBaseGroup.add(mesh);
+            baseMesh = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ color: 0xf5c2e7 }));
+            baseMesh.position.y = -g.boundingBox.min.y; addBlackEdges(baseMesh); globalBaseGroup.add(baseMesh);
             modulesGroup.position.y = -g.boundingBox.min.y; rebuildTopology(latestTopology);
         });
         stlLoader.load('./pivot.stl', g => { g.rotateY(Math.PI); g.scale(0.5, 0.5, 0.5); pivotStlGeometry = g; rebuildTopology(latestTopology); });
@@ -202,7 +200,6 @@
                 latestTopology = data.topology || [];
                 latestTopology.forEach(n => serverAngles[n.id] = n.angle);
                 
-                // 🌟 特徵比對防抖動
                 const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
                 if (newTopoStr !== currentTopologyStr) {
                     rebuildTopology(latestTopology);
@@ -216,10 +213,19 @@
             document.getElementById('totalCount').innerText = data.total || 0;
             document.getElementById('statusBadge').innerText = data.status;
             document.getElementById('statusBadge').className = `status-badge status-${data.status}`;
+
+            // 🌟 修復 1：動態印出每一顆積木的即時角度！
+            if (data.status === "WORKING" && data.topology) {
+                let angleStr = "";
+                data.topology.forEach(n => {
+                    angleStr += `ID ${n.id}: <span style="color:#a6e3a1">${n.angle}</span><br>`;
+                });
+                document.getElementById('angleListData').innerHTML = angleStr || "無數據";
+            }
         }
 
         function rebuildTopology(topo) {
-            if (!pivotStlGeometry || !bodyStlGeometry) return;
+            if (!pivotStlGeometry || !bodyStlGeometry || !baseMesh) return;
             while(modulesGroup.children.length > 0) modulesGroup.remove(modulesGroup.children[0]);
             modules = {};
             topo.forEach(node => {
@@ -240,13 +246,17 @@
                 }
             });
             
-            // 🌟 懸浮標籤的高度動態推升
             let maxAxisLen = 100;
-            if (topo.length > 0) maxAxisLen = Math.max(100, topo.length * 44.5 + 22.5);
+            if (topo.length > 0) {
+                maxAxisLen = Math.max(100, topo.length * 44.5 + 22.5);
+                
+                // 🌟 修復 3：把追蹤點放在最後一顆積木的「頂端」(高度 44.5)，這樣抓出來的座標才會是準的！
+                const lastNodeId = topo[topo.length - 1].id;
+                endEffectorMarker.position.set(0, 44.5, 0); 
+                modules[lastNodeId].userData.rotator.add(endEffectorMarker);
+            }
             axesHelper.scale.set(1, maxAxisLen / 100, 1);
-            labelX.position.set(110, 0, 0);
-            labelY.position.set(0, maxAxisLen + 5, 0);
-            labelZ.position.set(0, 0, 110);
+            labelX.position.set(110, 0, 0); labelY.position.set(0, maxAxisLen + 5, 0); labelZ.position.set(0, 0, 110);
 
             selectModule(selectedNodeId);
         }
@@ -256,14 +266,23 @@
             if (selectedNodeId && selectedNodeId !== 0 && selectedNodeId !== id) {
                 if (ws.readyState === 1) ws.send(JSON.stringify({ cmd: 'WEB_JOY', id: selectedNodeId, dir: 0 }));
             }
+            
+            // 處理積木變色
             for (let mid in modules) {
                 modules[mid].traverse(c => {
                     if (c.isMesh && c.userData.type === 'pivot') c.material.color.setHex(mid == id ? 0x89b4fa : 0xa6adc8);
                     if (c.isMesh && c.userData.type === 'body') c.material.color.setHex(mid == id ? 0x89b4fa : 0xf9e2af);
                 });
             }
+            
+            // 🌟 修復 2：處理底座 (ID 0) 的變色，確保按上下鍵時視覺回饋正確！
+            if (baseMesh) {
+                //baseMesh.material.color.setHex(id === 0 ? 0x89b4fa : 0xf5c2e7);
+            }
+
             selectedNodeId = id;
             document.getElementById('selectedInfo').innerText = `當前操控節點: ID ${id || 0}`;
+            
             if (window.innerWidth <= 768) {
                 if (id > 0) {
                     mOverlay.classList.add('active');
@@ -277,18 +296,24 @@
         renderer.domElement.addEventListener('pointerdown', e => {
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1; mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
-            const isects = raycaster.intersectObjects(modulesGroup.children, true);
+            
+            // 同時偵測積木和底座
+            const objectsToIntersect = [...modulesGroup.children, globalBaseGroup];
+            const isects = raycaster.intersectObjects(objectsToIntersect, true);
+            
             if (isects.length > 0) {
-                let o = isects[0].object; while (o && !o.userData.id) o = o.parent;
-                if (o) selectModule(o.userData.id);
+                let o = isects[0].object; 
+                // 如果點到底座
+                if (o === baseMesh) { selectModule(0); return; }
+                // 如果點到積木
+                while (o && (!o.userData || !o.userData.id)) o = o.parent;
+                if (o && o.userData) selectModule(o.userData.id);
             } else selectModule(0);
         });
 
-        // 🌟 補回：實體底座方向同步旋轉魔法！
         const baseRotationSelect = document.getElementById('baseRotationSelect');
         if (baseRotationSelect) {
             baseRotationSelect.addEventListener('change', (e) => {
-                // 將選取的角度轉換為弧度，並直接讓整個積木群組跟著轉！
                 modulesGroup.rotation.y = parseInt(e.target.value) * (Math.PI / 180);
             });
         }
@@ -303,24 +328,49 @@
         });
 
         window.addEventListener('keydown', e => {
-            if (e.code === 'Space') { e.preventDefault(); ws.send(JSON.stringify({cmd: 'RESET_ALL'})); return; }
+            // 🛡️ 防連發護盾：阻擋作業系統按鍵長按導致的網路塞車
+            if (e.repeat) return; 
+
+            // 🌟 空白鍵：全機平滑歸零
+            if (e.code === 'Space') { 
+                e.preventDefault(); 
+                if (ws.readyState === 1) ws.send(JSON.stringify({cmd: 'RESET_ALL'})); 
+                return; 
+            }
             
-            // 🌟 上下鍵選取積木功能復活！
+            // 🌟 N 鍵：切換 網頁主控 / 實體遙控 模式
+            if (e.code === 'KeyN') {
+                e.preventDefault();
+                if (ws.readyState === 1) ws.send(JSON.stringify({cmd: 'TOGGLE_MODE'}));
+                return;
+            }
+
+            // 🌟 上下鍵：無縫選取積木
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                 e.preventDefault();
                 let maxId = latestTopology.length;
                 let currentId = selectedNodeId || 0;
-                if (e.key === 'ArrowUp' && currentId < maxId) selectModule(currentId + 1);
-                else if (e.key === 'ArrowDown' && currentId > 0) selectModule(currentId - 1);
+                
+                if (e.key === 'ArrowUp' && currentId < maxId) {
+                    selectModule(currentId + 1);
+                } else if (e.key === 'ArrowDown' && currentId > 0) {
+                    selectModule(currentId - 1);
+                }
                 return;
             }
 
+            // 🌟 左右鍵：控制目前選取積木的馬達正反轉
             if (selectedNodeId > 0) {
                 let dir = 0;
-                if (e.key === 'ArrowRight') dir = 1; if (e.key === 'ArrowLeft') dir = -1;
-                if (dir !== 0) ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: dir}));
+                if (e.key === 'ArrowRight') dir = 1; 
+                if (e.key === 'ArrowLeft') dir = -1;
+                
+                if (dir !== 0 && ws.readyState === 1) {
+                    ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: dir}));
+                }
             }
         });
+
         window.addEventListener('keyup', e => {
             if (selectedNodeId > 0 && ['ArrowRight', 'ArrowLeft'].includes(e.key)) {
                 ws.send(JSON.stringify({cmd: 'WEB_JOY', id: selectedNodeId, dir: 0}));
@@ -335,8 +385,11 @@
                 modules[id].userData.rotator.rotation.y += (target - modules[id].userData.rotator.rotation.y) * 0.15;
             }
             if (latestTopology.length > 0) {
-                modules[latestTopology[latestTopology.length-1].id].userData.rotator.getWorldPosition(worldVec);
+                // 🌟 修復 3：從最後一顆積木頂端的 Marker 提取真實末端座標！
+                endEffectorMarker.getWorldPosition(worldVec);
                 document.getElementById('xyzDisplay').innerHTML = `X: ${(worldVec.x*2).toFixed(1)} <br>Y: ${(worldVec.y*2).toFixed(1)} <br>Z: ${(worldVec.z*2).toFixed(1)}`;
+            } else {
+                document.getElementById('xyzDisplay').innerHTML = `X: 0.0 <br>Y: 0.0 <br>Z: 0.0`;
             }
             renderer.render(scene, camera);
         }
