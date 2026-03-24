@@ -249,6 +249,18 @@
             document.getElementById('statusBadge').innerText = data.status;
             document.getElementById('statusBadge').className = `status-badge status-${data.status}`;
 
+            // 🌟 核心修復：讀取 S3 傳來的控制模式，並更新 UI 文字與顏色！
+            if (data.mode) {
+                const modeSpan = document.getElementById('modeDisplay');
+                if (data.mode === "REMOTE") {
+                    modeSpan.innerHTML = "🎮 實體遙控";
+                    modeSpan.style.color = "#f9e2af"; // 切換成帥氣的黃色
+                } else {
+                    modeSpan.innerHTML = "🌐 網頁主控";
+                    modeSpan.style.color = "#a6e3a1"; // 恢復成原本的綠色
+                }
+            }
+
             // 🌟 修復 1：動態換算並印出真實度數！
             if (data.status === "WORKING" && data.topology) {
                 let angleStr = "";
