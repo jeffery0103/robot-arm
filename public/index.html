@@ -215,20 +215,33 @@
         };
 
         // 原本的接收 S3 訊息邏輯
+        // 🌟 修復 2：網頁端看門狗機制
+        let s3Watchdog;
+        function resetS3Watchdog() {
+            clearTimeout(s3Watchdog);
+            s3Watchdog = setTimeout(() => {
+                document.getElementById('statusBadge').innerText = "S3 主板已離線";
+                document.getElementById('statusBadge').className = "status-badge status-ERROR";
+            }, 2000); // 只要 2 秒沒收到 S3 的廣播，就判定斷線！
+        }
+
         ws.onmessage = e => {
             const data = JSON.parse(e.data);
+            
+            // 每次收到伺服器傳來的合法資料，就摸一下看門狗讓牠重新計時
+            if(data.status) resetS3Watchdog(); 
+            
             if (data.status === "WORKING") {
                 latestTopology = data.topology || [];
                 latestTopology.forEach(n => serverAngles[n.id] = n.angle);
                 
-                // 🌟 特徵比對防抖動
                 const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
                 if (newTopoStr !== currentTopologyStr) {
                     rebuildTopology(latestTopology);
                     currentTopologyStr = newTopoStr;
                 }
             }
-            updateSystemUI(data); // 收到 S3 訊息後，就會被 S3 的真實狀態 (如 WORKING) 覆蓋
+            updateSystemUI(data); 
         };
 
         function updateSystemUI(data) {
@@ -236,11 +249,13 @@
             document.getElementById('statusBadge').innerText = data.status;
             document.getElementById('statusBadge').className = `status-badge status-${data.status}`;
 
-            // 🌟 修復 1：動態印出每一顆積木的即時角度！
+            // 🌟 修復 1：動態換算並印出真實度數！
             if (data.status === "WORKING" && data.topology) {
                 let angleStr = "";
                 data.topology.forEach(n => {
-                    angleStr += `ID ${n.id}: <span style="color:#a6e3a1">${n.angle}</span><br>`;
+                    // 將 0~1000 的數值，對應到 -120° ~ +120° (每單位 0.24 度)
+                    let degree = ((n.angle - 500) * 0.24).toFixed(1); 
+                    angleStr += `ID ${n.id}: <span style="color:#a6e3a1">${degree}°</span><br>`;
                 });
                 document.getElementById('angleListData').innerHTML = angleStr || "無數據";
             }
