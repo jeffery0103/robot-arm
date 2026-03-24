@@ -352,6 +352,7 @@
         if (baseRotationSelect) {
             baseRotationSelect.addEventListener('change', (e) => {
                 modulesGroup.rotation.y = parseInt(e.target.value) * (Math.PI / 180);
+                e.target.blur();
             });
         }
 
