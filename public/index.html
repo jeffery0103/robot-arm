@@ -194,19 +194,41 @@
         stlLoader.load('./body.stl', g => { g.rotateY(Math.PI); g.scale(0.5, 0.5, 0.5); bodyStlGeometry = g; rebuildTopology(latestTopology); });
 
         const ws = new WebSocket("wss://robot-arm-u40p.onrender.com");
+
+        // 🌟 新增 1：當網頁成功連上 Render 伺服器時
+        ws.onopen = () => {
+            document.getElementById('statusBadge').innerText = "伺服器已連線 (等待S3)";
+            document.getElementById('statusBadge').className = "status-badge status-READY";
+            document.getElementById('errorMsg').innerText = ""; // 清除錯誤訊息
+        };
+
+        // 🌟 新增 2：當網頁與伺服器斷線時 (可能是 Render 休眠，或是你沒網路)
+        ws.onclose = () => {
+            document.getElementById('statusBadge').innerText = "伺服器斷線/喚醒中";
+            document.getElementById('statusBadge').className = "status-badge status-OFFLINE";
+        };
+
+        // 🌟 新增 3：當發生網路錯誤時
+        ws.onerror = (error) => {
+            document.getElementById('statusBadge').innerText = "網頁連線錯誤";
+            document.getElementById('statusBadge').className = "status-badge status-ERROR";
+        };
+
+        // 原本的接收 S3 訊息邏輯
         ws.onmessage = e => {
             const data = JSON.parse(e.data);
             if (data.status === "WORKING") {
                 latestTopology = data.topology || [];
                 latestTopology.forEach(n => serverAngles[n.id] = n.angle);
                 
+                // 🌟 特徵比對防抖動
                 const newTopoStr = latestTopology.map(n => `${n.id}-${n.face}`).join('|');
                 if (newTopoStr !== currentTopologyStr) {
                     rebuildTopology(latestTopology);
                     currentTopologyStr = newTopoStr;
                 }
             }
-            updateSystemUI(data);
+            updateSystemUI(data); // 收到 S3 訊息後，就會被 S3 的真實狀態 (如 WORKING) 覆蓋
         };
 
         function updateSystemUI(data) {
